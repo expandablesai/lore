@@ -34,16 +34,16 @@ export function deterministicEmbed(text: string, dim: number = HASH_DIM): Float3
     const digest = createHash("sha256").update(input).digest();
     for (let i = 0; i < digest.length && offset < dim; i += 2) {
       // Two bytes → uint16 → float in [-1, 1]
-      const raw = (digest[i] << 8) | digest[i + 1];
+      const raw = ((digest[i] ?? 0) << 8) | (digest[i + 1] ?? 0);
       vec[offset++] = (raw / 65535) * 2 - 1;
     }
     round++;
   }
   // Normalize to unit length for cosine similarity
   let norm = 0;
-  for (let i = 0; i < dim; i++) norm += vec[i] * vec[i];
+  for (let i = 0; i < dim; i++) { const v = vec[i] ?? 0; norm += v * v; }
   norm = Math.sqrt(norm) || 1;
-  for (let i = 0; i < dim; i++) vec[i] /= norm;
+  for (let i = 0; i < dim; i++) vec[i] = (vec[i] ?? 0) / norm;
   return vec;
 }
 
@@ -64,7 +64,7 @@ export function zeroPad(vec: Float32Array, targetDim: number = EMBEDDING_DIM): F
 export function vectorToPgText(vec: Float32Array): string {
   const parts: string[] = new Array(vec.length);
   for (let i = 0; i < vec.length; i++) {
-    parts[i] = vec[i].toFixed(6);
+    parts[i] = (vec[i] ?? 0).toFixed(6);
   }
   return `[${parts.join(",")}]`;
 }

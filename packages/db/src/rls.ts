@@ -20,7 +20,7 @@ DO $$ BEGIN
 END $$;
 
 -- C2 FIX: SECURITY DEFINER function owned by superuser, reads break_glass_grants bypassing RLS
-CREATE FUNCTION lore_break_glass_allows(p_target uuid) RETURNS bool
+CREATE OR REPLACE FUNCTION lore_break_glass_allows(p_target uuid) RETURNS bool
   LANGUAGE sql STABLE SECURITY DEFINER
   SET search_path = public, pg_temp AS
 $$ SELECT EXISTS (
@@ -38,11 +38,13 @@ ALTER TABLE assertions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE assertions FORCE ROW LEVEL SECURITY;
 
 -- C1 FIX: RESTRICTIVE policy always AND'd with permissive policies (fixes OR-combination leak)
+DROP POLICY IF EXISTS tenant_isolation ON assertions;
 CREATE POLICY tenant_isolation ON assertions
   AS RESTRICTIVE
   USING (org_id = current_setting('lore.org_id')::uuid);
 
 -- C3 FIX: Permissive scope-aware visibility (project rows require membership)
+DROP POLICY IF EXISTS scope_isolation ON assertions;
 CREATE POLICY scope_isolation ON assertions
   USING (
     (scope = 'personal' AND owner_user_id = current_setting('lore.user_id')::uuid)

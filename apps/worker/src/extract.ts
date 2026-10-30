@@ -60,7 +60,7 @@ export async function extractDocx(buffer: Buffer): Promise<ExtractionResult> {
 export async function extractXlsx(buffer: Buffer): Promise<ExtractionResult> {
   const ExcelJS = (await import("exceljs")).default ?? (await import("exceljs"));
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer);
+  await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0]);
 
   const sections: string[] = [];
   const allChunks: ChunkSpec[] = [];

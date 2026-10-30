@@ -106,7 +106,7 @@ export function chunkRows(
   rowsPerChunk: number = 500,
 ): ChunkSpec[] {
   if (rows.length === 0) return [];
-  const header = rows[0];
+  const header = rows[0] ?? [];
   const dataRows = rows.slice(1);
   const chunks: ChunkSpec[] = [];
   let seq = 0;

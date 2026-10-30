@@ -1,0 +1,51 @@
+import { createDb, type Db } from "@lore/db";
+import cors from "@fastify/cors";
+import multipart from "@fastify/multipart";
+import Fastify, { type FastifyInstance } from "fastify";
+import {
+  serializerCompiler,
+  validatorCompiler,
+  type ZodTypeProvider,
+} from "fastify-type-provider-zod";
+import client from "prom-client";
+
+import { createAuthRoutes } from "./routes/auth.ts";
+import healthRoutes from "./routes/health.ts";
+
+/**
+ * App factory.
+ *
+ * Lives apart from `index.ts` because that module listens on a port at import
+ * time — anything that just wants the Fastify instance (the vitest suites, via
+ * `app.inject`) would otherwise start a real server as a side effect.
+ */
+
+const register = new client.Registry();
+client.collectDefaultMetrics({ register });
+
+export function createApp(db: Db = createDb()): FastifyInstance {
+  const app = Fastify({ logger: true }).withTypeProvider<ZodTypeProvider>();
+
+  app.setValidatorCompiler(validatorCompiler);
+  app.setSerializerCompiler(serializerCompiler);
+
+  app.register(cors);
+  app.register(multipart);
+
+  app.register(healthRoutes);
+  app.register(createAuthRoutes(db));
+
+  app.get("/metrics", async (_request, reply) => {
+    reply.header("Content-Type", register.contentType);
+    return register.metrics();
+  });
+
+  // TODO: orgs routes (create, list, members)
+  // TODO: users routes (profile, settings)
+  // TODO: projects routes (create, list, members)
+  // TODO: memory routes (recall, reflect, pages)
+  // TODO: documents routes (upload, list, read)
+  // TODO: admin routes (provisioning, fleet health)
+
+  return app;
+}

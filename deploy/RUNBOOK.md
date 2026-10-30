@@ -18,6 +18,28 @@ git push -u origin master
 - git
 - The lore repository pushed to its remote (done: `origin/master`)
 
+Check all three; install what is missing — the lab image ships **without
+git**, and possibly without Docker:
+
+```bash
+docker info >/dev/null 2>&1 && echo docker-ok || echo docker-MISSING
+docker compose version >/dev/null 2>&1 && echo compose-ok || echo compose-MISSING
+command -v git || echo git-MISSING
+```
+
+```bash
+apt-get update && apt-get install -y git
+```
+
+Only if Docker reported missing — official packages, Debian 13 (`trixie`):
+
+```bash
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian trixie stable" > /etc/apt/sources.list.d/docker.list
+apt-get update && apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+```
+
 ## 1. Clone
 
 ```bash

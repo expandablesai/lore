@@ -1,5 +1,5 @@
 import { eq, and, sql, inArray } from "drizzle-orm";
-import { assertions, events, audit, type Db } from "@lore/db";
+import { assertions, events, audit, type Db, withRls } from "@lore/db";
 import type { FastifyPluginAsync } from "fastify";
 import type { AuthenticatedUser } from "../plugins/auth-guard.ts";
 
@@ -42,17 +42,18 @@ export const createMemoryRoutes: (db: Db) => FastifyPluginAsync = (db) => async 
     async (request) => {
       const user = request.user;
       const { query, scope } = request.body;
-      const conditions = [eq(assertions.orgId, user.orgId)];
-      if (scope) conditions.push(eq(assertions.scope, scope as "personal" | "project" | "org"));
-      if (query) {
-        conditions.push(sql`${assertions.subject} % ${query}`);
-      }
-      const rows = await db.select({
-        id: assertions.id, scope: assertions.scope,
-        subject: assertions.subject, predicate: assertions.predicate, object: assertions.object,
-        status: assertions.status, trust: assertions.trust, confidence: assertions.confidence,
-      }).from(assertions).where(and(...conditions)).limit(50);
-      return rows;
+      return withRls(db, user.orgId, user.id, async (tx) => {
+        const conditions = [eq(assertions.orgId, user.orgId)];
+        if (scope) conditions.push(eq(assertions.scope, scope as "personal" | "project" | "org"));
+        if (query) {
+          conditions.push(sql`${assertions.subject} % ${query}`);
+        }
+        return tx.select({
+          id: assertions.id, scope: assertions.scope,
+          subject: assertions.subject, predicate: assertions.predicate, object: assertions.object,
+          status: assertions.status, trust: assertions.trust, confidence: assertions.confidence,
+        }).from(assertions).where(and(...conditions)).limit(50);
+      });
     },
   );
 

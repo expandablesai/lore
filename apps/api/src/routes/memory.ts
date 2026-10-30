@@ -1,5 +1,5 @@
-import { eq, and, sql, inArray } from "drizzle-orm";
-import { assertions, events, audit, type Db, withRls } from "@lore/db";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { assertions, audit, chunks, documents, embeddings, type Db, withRls, writeEvent } from "@lore/db";
 import type { FastifyPluginAsync } from "fastify";
 import type { AuthenticatedUser } from "../plugins/auth-guard.ts";
 
@@ -21,17 +21,31 @@ export const createMemoryRoutes: (db: Db) => FastifyPluginAsync = (db) => async 
       if (scope === "personal" && !user) {
         return reply.code(400).send({ error: "personal scope requires owner" });
       }
+      const trustLevel = trust ?? 1;
+      // T0-never-confirmed: trust 0 items are quarantined and cannot be confirmed
+      if (trustLevel === 0) {
+        return reply.code(400).send({ error: "T0 quarantined items cannot be asserted (trust enforcement)" });
+      }
       const inserted = await db.insert(assertions).values({
         orgId: user.orgId,
         scope: scope as "personal" | "project" | "org",
         subject, predicate, object,
         ownerUserId: user.id,
         sources,
-        trust: trust ?? 1,
+        trust: trustLevel,
         status: "proposed",
       }).returning();
       const assertion = inserted[0];
       if (!assertion) throw new Error("assertion insert failed");
+      // Write hash-chained event
+      await writeEvent(db, user.orgId, {
+        actorType: "user",
+        actorId: user.id,
+        surface: "memory",
+        kind: "decision",
+        payload: { action: "remember", assertionId: assertion.id, subject, predicate, object },
+        trust: trustLevel,
+      });
       await db.insert(audit).values({ orgId: user.orgId, actorId: user.id, action: "memory.remember", targetType: "assertion", targetIds: [assertion.id], ip: request.ip });
       return reply.code(201).send({ id: assertion.id, scope: assertion.scope, subject: assertion.subject, status: assertion.status });
     },
@@ -62,7 +76,7 @@ export const createMemoryRoutes: (db: Db) => FastifyPluginAsync = (db) => async 
     async (request, reply) => {
       const user = request.user;
       const { id, reason } = request.body;
-      const rows = await db.select({ id: assertions.id, ownerUserId: assertions.ownerUserId, orgId: assertions.orgId })
+      const rows = await db.select({ id: assertions.id, ownerUserId: assertions.ownerUserId, orgId: assertions.orgId, sourceDocIds: assertions.sourceDocIds })
         .from(assertions).where(eq(assertions.id, id)).limit(1);
       const assertion = rows[0];
       if (!assertion) return reply.code(404).send({ error: "not found" });
@@ -70,9 +84,29 @@ export const createMemoryRoutes: (db: Db) => FastifyPluginAsync = (db) => async 
       if (assertion.ownerUserId !== user.id && rank < 2) {
         return reply.code(403).send({ error: "forbidden" });
       }
+      // Forget cascade: delete assertion, then cascade to source documents and their chunks/embeddings
       await db.delete(assertions).where(eq(assertions.id, id));
+      // Cascade across source_doc_ids: delete referenced documents, their chunks, and embeddings
+      const docIds = assertion.sourceDocIds ?? [];
+      if (docIds.length > 0) {
+        // Delete chunks belonging to these documents
+        await db.delete(chunks).where(inArray(chunks.documentId, docIds));
+        // Delete embeddings referencing these documents as entities
+        await db.delete(embeddings).where(inArray(embeddings.entityId, docIds));
+        // Delete the documents themselves
+        await db.delete(documents).where(inArray(documents.id, docIds));
+      }
+      // Write hash-chained event
+      await writeEvent(db, user.orgId, {
+        actorType: "user",
+        actorId: user.id,
+        surface: "memory",
+        kind: "correction",
+        payload: { action: "forget", assertionId: id, reason: reason ?? null, cascadedDocIds: docIds },
+        trust: 2,
+      });
       await db.insert(audit).values({ orgId: user.orgId, actorId: user.id, action: "memory.forget", targetType: "assertion", targetIds: [id], detail: { reason }, ip: request.ip });
-      return { forgotten: id, receipt: { by: user.id, reason: reason ?? null, at: new Date().toISOString() } };
+      return { forgotten: id, receipt: { by: user.id, reason: reason ?? null, at: new Date().toISOString(), cascadedDocIds: docIds } };
     },
   );
 };

@@ -105,6 +105,7 @@ SPA fallback and proxies `/api/*` — prefix stripped — to `app:3001`).
 ## 7. Smoke check
 
 ```bash
+for i in $(seq 1 30); do curl -fsS http://localhost/api/healthz >/dev/null 2>&1 && break; sleep 2; done
 curl -fsS http://localhost/ >/dev/null && echo web-ok
 curl -fsS http://localhost/api/healthz && echo api-ok
 docker compose -f deploy/compose/docker-compose.yml exec -T db \

@@ -25,6 +25,7 @@
     "fastify": "5.12.7",
     "fastify-type-provider-zod": "7.0.0",
     "otplib": "13.5.0",
+    "pg-boss": "12.38.0",
     "pino": "10.4.0",
     "postgres": "3.4.9",
     "prom-client": "15.1.3",

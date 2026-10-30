@@ -10,6 +10,10 @@ import {
 import client from "prom-client";
 
 import { createAuthRoutes } from "./routes/auth.ts";
+import { createOrgRoutes } from "./routes/orgs.ts";
+import { createUserRoutes } from "./routes/users.ts";
+import { createProjectRoutes } from "./routes/projects.ts";
+import { requireAuth } from "./plugins/auth-guard.ts";
 import healthRoutes from "./routes/health.ts";
 
 /**
@@ -35,14 +39,18 @@ export function createApp(db: Db = createDb()): FastifyInstance {
   app.register(healthRoutes);
   app.register(createAuthRoutes(db));
 
+  app.register(async (protectedScope) => {
+    protectedScope.addHook("preHandler", requireAuth(db));
+    protectedScope.register(createOrgRoutes(db));
+    protectedScope.register(createUserRoutes(db));
+    protectedScope.register(createProjectRoutes(db));
+  });
+
   app.get("/metrics", async (_request, reply) => {
     reply.header("Content-Type", register.contentType);
     return register.metrics();
   });
 
-  // TODO: orgs routes (create, list, members)
-  // TODO: users routes (profile, settings)
-  // TODO: projects routes (create, list, members)
   // TODO: memory routes (recall, reflect, pages)
   // TODO: documents routes (upload, list, read)
   // TODO: admin routes (provisioning, fleet health)

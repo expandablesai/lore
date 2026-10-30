@@ -13,6 +13,7 @@ import { createAuthRoutes } from "./routes/auth.ts";
 import { createOrgRoutes } from "./routes/orgs.ts";
 import { createUserRoutes } from "./routes/users.ts";
 import { createProjectRoutes } from "./routes/projects.ts";
+import { createMemoryRoutes } from "./routes/memory.ts";
 import { requireAuth } from "./plugins/auth-guard.ts";
 import healthRoutes from "./routes/health.ts";
 
@@ -44,6 +45,7 @@ export function createApp(db: Db = createDb()): FastifyInstance {
     protectedScope.register(createOrgRoutes(db));
     protectedScope.register(createUserRoutes(db));
     protectedScope.register(createProjectRoutes(db));
+    protectedScope.register(createMemoryRoutes(db));
   });
 
   app.get("/metrics", async (_request, reply) => {
@@ -51,7 +53,6 @@ export function createApp(db: Db = createDb()): FastifyInstance {
     return register.metrics();
   });
 
-  // TODO: memory routes (recall, reflect, pages)
   // TODO: documents routes (upload, list, read)
   // TODO: admin routes (provisioning, fleet health)
 

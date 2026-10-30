@@ -1,9 +1,99 @@
 import { PgBoss } from "pg-boss";
-
-// TODO: register ingestion job handlers — document.upload, document.extract,
-// document.embed, consolidation, maintenance
+import { readFile } from "node:fs/promises";
+import { createDb } from "@lore/db";
+import {
+  updateDocumentStatus,
+  insertChunks,
+  insertEmbeddings,
+  deleteDocumentDerived,
+  JOB_DOCUMENT_INGEST,
+  JOB_DOCUMENT_REPROCESS,
+  type DocumentIngestPayload,
+  type DocumentReprocessPayload,
+} from "@lore/db";
+import { deterministicEmbed, zeroPad, vectorToPgText, HASH_MODEL, HASH_DIM } from "@lore/core";
+import { extractByMime } from "./extract.ts";
 
 const SHUTDOWN_SIGNALS = ["SIGTERM", "SIGINT"] as const;
+
+/** Resolve a storage key to a local file path. */
+function resolveStoragePath(storageKey: string): string {
+  // Storage keys are relative paths under the blobs directory
+  const blobsDir = process.env.BLOBS_DIR ?? "/srv/lore/blobs";
+  return `${blobsDir}/${storageKey}`;
+}
+
+/** Core ingestion logic: extract → chunk → embed → persist. */
+async function ingestDocument(
+  db: ReturnType<typeof createDb>,
+  payload: DocumentIngestPayload | DocumentReprocessPayload,
+): Promise<void> {
+  const { documentId, orgId, storageKey, mime } = payload;
+
+  await updateDocumentStatus(db, documentId, "extracting");
+
+  try {
+    // Read blob from disk
+    const filePath = resolveStoragePath(storageKey);
+    const buffer = await readFile(filePath);
+
+    // Extract text by MIME type
+    const result = await extractByMime(buffer, mime);
+
+    // Clear previous derived data (for reprocess)
+    await deleteDocumentDerived(db, documentId);
+
+    // Insert chunks
+    const chunkRows = result.chunks.map((c) => ({
+      documentId,
+      orgId,
+      seq: c.seq,
+      text: c.text,
+      tokens: c.tokens,
+      pageFrom: c.pageFrom,
+      pageTo: c.pageTo,
+    }));
+    await insertChunks(db, chunkRows);
+
+    // Embed chunks using deterministic hash fallback
+    const embeddingRows: Array<{
+      entityType: string;
+      entityId: string;
+      model: string;
+      dim: number;
+      vec: string;
+    }> = [];
+
+    // We need chunk IDs — re-query them
+    const { getDocumentChunks } = await import("@lore/db");
+    const storedChunks = await getDocumentChunks(db, documentId);
+
+    for (const chunk of storedChunks) {
+      const vec = deterministicEmbed(chunk.text, HASH_DIM);
+      const padded = zeroPad(vec);
+      embeddingRows.push({
+        entityType: "chunk",
+        entityId: chunk.id,
+        model: HASH_MODEL,
+        dim: HASH_DIM,
+        vec: vectorToPgText(padded),
+      });
+    }
+    await insertEmbeddings(db, embeddingRows);
+
+    // Mark indexed
+    await updateDocumentStatus(db, documentId, "indexed", {
+      pageCount: result.pageCount ?? undefined,
+    });
+
+    console.log(`document ${documentId} indexed: ${result.chunks.length} chunks, ${embeddingRows.length} embeddings`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await updateDocumentStatus(db, documentId, "failed", { error: message });
+    console.error(`document ${documentId} ingestion failed:`, message);
+    throw err;
+  }
+}
 
 export async function startWorker(): Promise<PgBoss> {
   const databaseUrl = process.env["DATABASE_URL"];
@@ -11,6 +101,7 @@ export async function startWorker(): Promise<PgBoss> {
     throw new Error("DATABASE_URL is not set");
   }
 
+  const db = createDb(databaseUrl);
   const boss = new PgBoss({ connectionString: databaseUrl, schema: "boss" });
 
   for (const signal of SHUTDOWN_SIGNALS) {
@@ -29,6 +120,23 @@ export async function startWorker(): Promise<PgBoss> {
   await boss.start();
   console.log("worker ready");
 
+  // Register ingestion job handlers
+  await boss.createQueue(JOB_DOCUMENT_INGEST);
+  await boss.createQueue(JOB_DOCUMENT_REPROCESS);
+
+  await boss.work<DocumentIngestPayload>(JOB_DOCUMENT_INGEST, async (jobs) => {
+    for (const job of jobs) {
+      await ingestDocument(db, job.data);
+    }
+  });
+
+  await boss.work<DocumentReprocessPayload>(JOB_DOCUMENT_REPROCESS, async (jobs) => {
+    for (const job of jobs) {
+      await ingestDocument(db, job.data);
+    }
+  });
+
+  console.log("worker registered job handlers: document.ingest, document.reprocess");
   return boss;
 }
 

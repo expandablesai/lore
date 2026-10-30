@@ -14,18 +14,22 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@lore/ui": "workspace:*",
     "react": "19.3.1",
-    "react-dom": "19.3.1",
-    "@lore/ui": "workspace:*"
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
-    "typescript": "5.x",
-    "vite": "8.3.5",
-    "@vitejs/plugin-react": "5.x",
+    "@tailwindcss/vite": "4.x",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
     "@types/react": "19.x",
     "@types/react-dom": "19.x",
-    "vitest": "3.x",
+    "@vitejs/plugin-react": "5.x",
+    "jsdom": "^30.1.3",
     "tailwindcss": "4.x",
-    "@tailwindcss/vite": "4.x"
+    "typescript": "5.x",
+    "vite": "8.3.5",
+    "vitest": "3.x"
   }
 }

@@ -126,3 +126,10 @@ export interface ForgetReceipt {
     cascadedDocIds: string[];
   };
 }
+
+export interface OrgLlmKey {
+  id: string;
+  label: string;
+  provider: string;
+  createdAt: string;
+}

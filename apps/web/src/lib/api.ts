@@ -13,6 +13,7 @@ import type {
   ForgetReceipt,
   MeUser,
   Org,
+  OrgLlmKey,
   OrgMember,
   Project,
   RememberResult,
@@ -101,6 +102,12 @@ export interface AddMemberInput {
   role: Exclude<Role, "superadmin">;
 }
 
+export interface AddLlmKeyInput {
+  label: string;
+  apiKey: string;
+  provider?: string;
+}
+
 export interface RememberInput {
   scope: Scope;
   subject: string;
@@ -187,6 +194,21 @@ export const api = {
 
   forget: (token: string, input: { id: string; reason?: string }) =>
     request<ForgetReceipt>("/forget", { method: "POST", token, body: input }),
+
+  orgLlmKeys: (token: string, orgId: string) =>
+    request<OrgLlmKey[]>(`/orgs/${orgId}/llm-keys`, { token }),
+
+  addLlmKey: (token: string, orgId: string, input: AddLlmKeyInput) =>
+    request<{ id: string; orgId: string; label: string; provider: string; createdAt: string }>(
+      `/orgs/${orgId}/llm-keys`,
+      { method: "POST", token, body: input },
+    ),
+
+  revokeLlmKey: (token: string, orgId: string, keyId: string) =>
+    request<{ ok: boolean }>(`/orgs/${orgId}/llm-keys/${keyId}/revoke`, { method: "POST", token }),
+
+  testLlmKey: (token: string, orgId: string, keyId: string) =>
+    request<{ ok: boolean; model: string; reply: string }>(`/orgs/${orgId}/llm-keys/${keyId}/test`, { method: "POST", token }),
 
   health: () => request<{ ok: boolean }>("/healthz"),
 };

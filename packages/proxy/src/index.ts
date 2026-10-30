@@ -1,7 +1,8 @@
 /**
- * @lore/proxy — upstream LLM adapter skeleton.
+ * @lore/proxy — upstream LLM adapter.
  *
- * Pure types and stubs; no HTTP yet.
+ * Pure types plus a real OpenAI chat-completions adapter over global fetch.
+ * The Anthropic adapter stays a typed stub until it is wired.
  */
 
 /** OpenAI-style chat completion request (minimal shape). */
@@ -42,32 +43,71 @@ export interface UpstreamAdapter {
   messages(request: MessagesRequest): Promise<MessagesResponse>;
 }
 
-/** Env bag type so this package needs no Node types. */
-export type UpstreamEnv = Readonly<Record<string, string | undefined>>;
+/** Per-request credentials for an adapter (resolved from the org's stored key). */
+export interface AdapterOptions {
+  readonly apiKey: string;
+  readonly baseUrl?: string;
+}
 
-/** OpenAI adapter stub. Base URL from OPENAI_BASE_URL. */
-export function createOpenAIAdapter(env: UpstreamEnv): UpstreamAdapter {
+const OPENAI_BASE = "https://api.openai.com/v1";
+const ANTHROPIC_BASE = "https://api.anthropic.com";
+
+async function postJson(url: string, apiKey: string, body: unknown): Promise<unknown> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`upstream ${res.status}: ${text.slice(0, 300)}`);
+  }
+  return JSON.parse(text) as unknown;
+}
+
+/** OpenAI adapter — real /chat/completions over fetch. */
+export function createOpenAIAdapter(opts: AdapterOptions): UpstreamAdapter {
+  const baseUrl = opts.baseUrl ?? OPENAI_BASE;
   return {
     name: "openai",
-    baseUrl: env["OPENAI_BASE_URL"] ?? "https://api.openai.com/v1",
-    chatCompletions() {
-      throw new Error("openai.chatCompletions: not implemented");
+    baseUrl,
+    async chatCompletions(request: ChatCompletionsRequest): Promise<ChatCompletionsResponse> {
+      const json = await postJson(`${baseUrl}/chat/completions`, opts.apiKey, {
+        model: request.model,
+        messages: request.messages,
+      });
+      const data = json as {
+        id?: string;
+        model?: string;
+        choices?: readonly { message?: { role?: string; content?: string } }[];
+      };
+      const choices = (data.choices ?? []).map((c) => ({
+        message: {
+          role: (c.message?.role ?? "assistant") as ChatMessage["role"],
+          content: c.message?.content ?? "",
+        },
+      }));
+      return { id: data.id ?? "", model: data.model ?? request.model, choices };
     },
-    messages() {
+    messages(): Promise<MessagesResponse> {
       throw new Error("openai adapter does not serve /v1/messages");
     },
   };
 }
 
-/** Anthropic adapter stub. Base URL from ANTHROPIC_BASE_URL. */
-export function createAnthropicAdapter(env: UpstreamEnv): UpstreamAdapter {
+/** Anthropic adapter — typed stub until wired. */
+export function createAnthropicAdapter(opts: AdapterOptions): UpstreamAdapter {
+  const baseUrl = opts.baseUrl ?? ANTHROPIC_BASE;
   return {
     name: "anthropic",
-    baseUrl: env["ANTHROPIC_BASE_URL"] ?? "https://api.anthropic.com",
-    chatCompletions() {
+    baseUrl,
+    chatCompletions(): Promise<ChatCompletionsResponse> {
       throw new Error("anthropic adapter does not serve /v1/chat/completions");
     },
-    messages() {
+    messages(): Promise<MessagesResponse> {
       throw new Error("anthropic.messages: not implemented");
     },
   };

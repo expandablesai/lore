@@ -7,15 +7,17 @@ import { useNav } from "./lib/nav";
 import { Dashboard } from "./views/Dashboard";
 import { DocumentDetail } from "./views/DocumentDetail";
 import { Documents } from "./views/Documents";
+import { LlmKeys } from "./views/LlmKeys";
 import { Members } from "./views/Members";
 import { Memory } from "./views/Memory";
 import { Button, type ViewProps } from "./views/common";
 
-const NAV = [
+const NAV: { label: string; path: string; adminOnly?: boolean }[] = [
   { label: "Dashboard", path: "/" },
   { label: "Documents", path: "/documents" },
   { label: "Memory", path: "/memory" },
   { label: "Members", path: "/members" },
+  { label: "LLM Keys", path: "/llm-keys", adminOnly: true },
 ];
 
 function isActive(path: string, target: string): boolean {
@@ -37,6 +39,7 @@ export function Shell() {
     view = <DocumentDetail {...viewProps} id={decodeURIComponent(path.slice("/documents/".length))} />;
   else if (path === "/memory") view = <Memory {...viewProps} />;
   else if (path === "/members") view = <Members {...viewProps} />;
+  else if (path === "/llm-keys") view = <LlmKeys {...viewProps} />;
   else
     view = (
       <div className="space-y-4">
@@ -55,7 +58,7 @@ export function Shell() {
           <p className="text-xs text-slate-500">Admin Console</p>
         </div>
         <nav className="flex gap-1 lg:flex-col">
-          {NAV.map((item) => (
+          {NAV.filter((item) => !item.adminOnly || user.role === "superadmin" || user.role === "org_admin").map((item) => (
             <button
               key={item.path}
               onClick={() => navigate(item.path)}

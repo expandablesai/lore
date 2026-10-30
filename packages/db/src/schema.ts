@@ -286,3 +286,14 @@ export const jobs = pgTable("jobs", {
   lastError: text("last_error"),
   lockedUntil: timestamp("locked_until", { withTimezone: true }),
 });
+
+// ─── LLM provider keys (encrypted at rest) ───────────────────────────────────
+export const orgLlmKeys = pgTable("org_llm_keys", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  label: text("label").notNull(),
+  provider: text("provider").notNull().default("openai"),
+  cipher: text("cipher").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+});

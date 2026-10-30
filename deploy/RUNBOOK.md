@@ -2,13 +2,13 @@
 
 Run these steps on the target host. The repo must be committed and pushed
 from the dev box first (CI and this runbook both pull from the remote).
-The dev-box repo currently has **no commits and no remote** — bootstrap it
-first:
+The dev-box bootstrap is **already complete** — the repo is committed and
+pushed to `origin/master`. Do not re-run it:
 
 ```bash
 git add -A
 git commit -m "lore: M0 monorepo with deploy pipeline"
-git remote add origin <your-lore-repo-url>   # e.g. github.com/<you>/lore
+git remote add origin https://github.com/expandablesai/lore.git
 git push -u origin master
 ```
 
@@ -16,12 +16,12 @@ git push -u origin master
 
 - Docker Engine + Compose plugin (`docker info`, `docker compose version`)
 - git
-- The lore repository pushed to its remote (bootstrap above)
+- The lore repository pushed to its remote (done: `origin/master`)
 
 ## 1. Clone
 
 ```bash
-git clone <lore-repo-url> /opt/lore
+git clone https://github.com/expandablesai/lore.git /opt/lore
 cd /opt/lore
 ```
 

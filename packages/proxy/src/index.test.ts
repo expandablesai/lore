@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createOpenAIAdapter } from "./index.js";
+import { createOpenAIAdapter, createOpenAIEmbedder } from "./index.js";
 
 describe("openai adapter", () => {
   afterEach(() => {
@@ -47,5 +47,25 @@ describe("openai adapter", () => {
     await expect(
       adapter.chatCompletions({ model: "m", messages: [{ role: "user", content: "x" }] }),
     ).rejects.toThrow(/401/);
+  });
+});
+
+describe("openai embedder", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("posts to /embeddings and returns float vectors", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      new Response(
+        JSON.stringify({ data: [{ embedding: [1, 2, 3] }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const embedder = createOpenAIEmbedder({ apiKey: "sk-test" });
+    const vecs = await embedder.embed("hello", "text-embedding-3-large");
+    expect(Array.from(vecs[0] ?? [])).toEqual([1, 2, 3]);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/embeddings");
   });
 });

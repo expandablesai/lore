@@ -130,6 +130,9 @@ importers:
       '@lore/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@lore/proxy':
+        specifier: workspace:*
+        version: link:../../packages/proxy
       exceljs:
         specifier: 4.4.0
         version: 4.4.0

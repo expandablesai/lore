@@ -63,3 +63,14 @@ export async function revealLlmKey(db: Db, id: string): Promise<string | null> {
   const row = rows[0];
   return row ? decryptSecret(row.cipher) : null;
 }
+
+/** Decrypt an org's active key for a background worker; null when the org has none. */
+export async function revealActiveLlmKey(db: Db, orgId: string): Promise<string | null> {
+  const rows = await db
+    .select({ cipher: orgLlmKeys.cipher })
+    .from(orgLlmKeys)
+    .where(and(eq(orgLlmKeys.orgId, orgId), isNull(orgLlmKeys.revokedAt)))
+    .limit(1);
+  const row = rows[0];
+  return row ? decryptSecret(row.cipher) : null;
+}

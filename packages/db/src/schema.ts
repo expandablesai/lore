@@ -187,7 +187,7 @@ export const embeddings = pgTable("embeddings", {
   entityId: uuid("entity_id").notNull(),
   model: text("model").notNull(),
   dim: integer("dim").notNull(),
-  vec: vector("vec", { dimensions: 1536 }).notNull(),
+  vec: vector("vec", { dimensions: 3072 }).notNull(),
 }, (t) => [primaryKey({ columns: [t.entityType, t.entityId, t.model] })]);
 
 // ─── Documents ───────────────────────────────────────────────────────────────

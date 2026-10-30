@@ -6,15 +6,18 @@ import {
   insertChunks,
   insertEmbeddings,
   deleteDocumentDerived,
+  revealActiveLlmKey,
   JOB_DOCUMENT_INGEST,
   JOB_DOCUMENT_REPROCESS,
   type DocumentIngestPayload,
   type DocumentReprocessPayload,
 } from "@lore/db";
-import { deterministicEmbed, zeroPad, vectorToPgText, HASH_MODEL, HASH_DIM } from "@lore/core";
+import { deterministicEmbed, zeroPad, vectorToPgText, HASH_MODEL, HASH_DIM, EMBEDDING_DIM } from "@lore/core";
+import { createOpenAIEmbedder } from "@lore/proxy";
 import { extractByMime } from "./extract.ts";
 
 const SHUTDOWN_SIGNALS = ["SIGTERM", "SIGINT"] as const;
+const EMBED_MODEL = "text-embedding-3-large";
 
 /** Resolve a storage key to a local file path. */
 function resolveStoragePath(storageKey: string): string {
@@ -55,7 +58,7 @@ async function ingestDocument(
     }));
     await insertChunks(db, chunkRows);
 
-    // Embed chunks using deterministic hash fallback
+    // Embed chunks: real OpenAI vectors when the org has a key, else deterministic hash
     const embeddingRows: Array<{
       entityType: string;
       entityId: string;
@@ -68,16 +71,33 @@ async function ingestDocument(
     const { getDocumentChunks } = await import("@lore/db");
     const storedChunks = await getDocumentChunks(db, documentId);
 
-    for (const chunk of storedChunks) {
-      const vec = deterministicEmbed(chunk.text, HASH_DIM);
-      const padded = zeroPad(vec);
-      embeddingRows.push({
-        entityType: "chunk",
-        entityId: chunk.id,
-        model: HASH_MODEL,
-        dim: HASH_DIM,
-        vec: vectorToPgText(padded),
-      });
+    const apiKey = await revealActiveLlmKey(db, orgId);
+    if (apiKey) {
+      const embedder = createOpenAIEmbedder({ apiKey });
+      const vecs = await embedder.embed(storedChunks.map((c) => c.text), EMBED_MODEL);
+      for (let i = 0; i < storedChunks.length; i++) {
+        const chunk = storedChunks[i];
+        if (!chunk) continue;
+        embeddingRows.push({
+          entityType: "chunk",
+          entityId: chunk.id,
+          model: EMBED_MODEL,
+          dim: EMBEDDING_DIM,
+          vec: vectorToPgText(vecs[i] ?? new Float32Array(EMBEDDING_DIM)),
+        });
+      }
+    } else {
+      for (const chunk of storedChunks) {
+        const vec = deterministicEmbed(chunk.text, HASH_DIM);
+        const padded = zeroPad(vec, EMBEDDING_DIM);
+        embeddingRows.push({
+          entityType: "chunk",
+          entityId: chunk.id,
+          model: HASH_MODEL,
+          dim: HASH_DIM,
+          vec: vectorToPgText(padded),
+        });
+      }
     }
     await insertEmbeddings(db, embeddingRows);
 

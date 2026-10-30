@@ -1,7 +1,9 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { assertions, audit, chunks, documents, embeddings, type Db, withRls, writeEvent } from "@lore/db";
+import { assertions, audit, chunks, documents, embeddings, revealActiveLlmKey, type Db, withRls, writeEvent } from "@lore/db";
 import type { FastifyPluginAsync } from "fastify";
 import type { AuthenticatedUser } from "../plugins/auth-guard.ts";
+import { createOpenAIEmbedder } from "@lore/proxy";
+import { deterministicEmbed, zeroPad, vectorToPgText, HASH_DIM, EMBEDDING_DIM } from "@lore/core";
 
 const ROLE_RANK: Record<string, number> = { viewer: 0, member: 1, org_admin: 2, superadmin: 3 };
 
@@ -60,7 +62,24 @@ export const createMemoryRoutes: (db: Db) => FastifyPluginAsync = (db) => async 
         const conditions = [eq(assertions.orgId, user.orgId)];
         if (scope) conditions.push(eq(assertions.scope, scope as "personal" | "project" | "org"));
         if (query) {
-          conditions.push(sql`${assertions.subject} % ${query}`);
+          // Hybrid recall: lexical subject match OR semantic nearest source documents
+          // (cosine over the caller's org chunk embeddings). Scoped to the caller's org.
+          const apiKey = await revealActiveLlmKey(db, user.orgId);
+          const qvec = apiKey
+            ? (await createOpenAIEmbedder({ apiKey }).embed(query, "text-embedding-3-large"))[0]
+            : zeroPad(deterministicEmbed(query, HASH_DIM), EMBEDDING_DIM);
+          const qtext = vectorToPgText(qvec ?? new Float32Array(EMBEDDING_DIM));
+          conditions.push(
+            sql`(${assertions.subject} % ${query} OR ${assertions.sourceDocIds} && (
+              SELECT array_agg(x.document_id) FROM (
+                SELECT c.document_id FROM embeddings e
+                JOIN chunks c ON c.id = e.entity_id
+                WHERE e.entity_type = 'chunk' AND c.org_id = ${user.orgId}
+                ORDER BY e.vec <=> ${qtext}::vector
+                LIMIT 50
+              ) x
+            ))`,
+          );
         }
         return tx.select({
           id: assertions.id, scope: assertions.scope,

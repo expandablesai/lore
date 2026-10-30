@@ -112,3 +112,27 @@ export function createAnthropicAdapter(opts: AdapterOptions): UpstreamAdapter {
     },
   };
 }
+
+/** An upstream embedding provider returning real vectors for semantic search. */
+export interface Embedder {
+  readonly name: string;
+  readonly baseUrl: string;
+  embed(input: string | readonly string[], model: string): Promise<Float32Array[]>;
+}
+
+/** OpenAI embedder — real /v1/embeddings over fetch. */
+export function createOpenAIEmbedder(opts: AdapterOptions): Embedder {
+  const baseUrl = opts.baseUrl ?? OPENAI_BASE;
+  return {
+    name: "openai",
+    baseUrl,
+    async embed(input: string | readonly string[], model: string): Promise<Float32Array[]> {
+      const json = await postJson(`${baseUrl}/embeddings`, opts.apiKey, {
+        model,
+        input,
+      });
+      const data = json as { data?: readonly { embedding?: readonly number[] }[] };
+      return (data.data ?? []).map((r) => Float32Array.from(r.embedding ?? []));
+    },
+  };
+}

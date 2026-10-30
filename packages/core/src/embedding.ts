@@ -11,7 +11,7 @@
 import { createHash } from "node:crypto";
 
 /** Target dimension for all embeddings (matches pgvector column). */
-export const EMBEDDING_DIM = 1536;
+export const EMBEDDING_DIM = 3072;
 
 /** Deterministic fallback model identifier. */
 export const HASH_MODEL = "hash";

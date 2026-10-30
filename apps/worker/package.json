@@ -1,0 +1,29 @@
+{
+  "name": "@lore/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "dev": "node --watch --experimental-strip-types src/index.ts",
+    "build": "tsc --noEmit",
+    "start": "node src/index.ts",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@lore/db": "workspace:*",
+    "@lore/core": "workspace:*",
+    "pdfjs-dist": "6.4.299",
+    "mammoth": "1.13.0",
+    "exceljs": "4.4.0",
+    "tesseract.js": "7.0.0",
+    "pino": "10.4.0",
+    "pg-boss": "12.38.0"
+  },
+  "devDependencies": {
+    "typescript": "5.x",
+    "vitest": "3.x",
+    "@types/node": "24.x"
+  }
+}

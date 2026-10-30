@@ -1,0 +1,31 @@
+{
+  "name": "@lore/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/main.tsx"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "@lore/ui": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "5.x",
+    "vite": "8.3.5",
+    "@vitejs/plugin-react": "5.x",
+    "@types/react": "19.x",
+    "@types/react-dom": "19.x",
+    "vitest": "3.x",
+    "tailwindcss": "4.x",
+    "@tailwindcss/vite": "4.x"
+  }
+}

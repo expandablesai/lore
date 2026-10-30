@@ -1,0 +1,315 @@
+﻿[2609.36373] Audience-Bound Persistent Memory: Authorization Across the Memory Lifecycle 
+ Skip to main content 
+ Search 
+ Submit 
+ Donate 
+ Log in 
+ Search arXiv 
+ Press Enter to search · Advanced search 
+--> 
+ Computer Science > Cryptography and Security
+ arXiv:2609.36373 (cs)
+ [Submitted on 28 Sep 2026]
+ Title: Audience-Bound Persistent Memory: Authorization Across the Memory Lifecycle
+ Authors: Sibo Liu 
+ View a PDF of the paper titled Audience-Bound Persistent Memory: Authorization Across the Memory Lifecycle, by Sibo Liu
+ View PDF 
+ HTML (experimental) 
+ Abstract: A personal language agent that acts for its owner across private and shared conversations can learn a fact from one audience and later place it in the context it assembles for another. We study authorization before context across the whole memory lifecycle. Each memory item carries the audience present when it was recorded; derived items are partitioned by audience, receive the intersection of their sources' audiences, or are suppressed; an audience widens only by an explicit, object-specific grant; and an item enters a model attempt only when every current viewer belongs to one of its authorized audiences, with unresolved viewers failing closed to public-only. Under explicit identity, provenance and complete-mediation assumptions, this admission is sound and policy-complete on the exact assembled context, enforced by exclusion rather than by model behavior. We realize it in two independently persisted reference architectures, a flat store and a relationship graph, and, descriptively, in a native agent-memory runtime. In a prospectively frozen confirmation over 10,000 multi-party histories, no forbidden item entered any architecture's context, whereas unscoped retrieval exposed forbidden items in 82% of its contexts. Entitled recall matched policy-equivalent baselines exactly and exceeded unscoped retrieval by 0.30 Recall@5, with a Holm-confirmed advantage that grows with distractors. No architecture produced a wrong-principal substitution, but unscoped substitutions were too rare to establish the prespecified joint decision.
+ Comments: 
+ 23 pages, 6 figures, 15 tables. Includes technical appendices and an ancillary research artifact 
+ Subjects: 
+ Cryptography and Security (cs.CR) ; Artificial Intelligence (cs.AI) 
+ Cite as: 
+ arXiv:2609.36373 [cs.CR] 
+ (or 
+ arXiv:2609.36373v1 [cs.CR] for this version)
+ https://doi.org/10.48550/arXiv.2609.36373 
+ Focus to learn more 
+ arXiv-issued DOI via DataCite
+ Submission history
+ From: Sibo Liu [ view email ] [v1] 
+ Mon, 28 Sep 2026 23:04:54 UTC (2,867 KB) 
+ Full-text links: 
+ Access Paper:
+View a PDF of the paper titled Audience-Bound Persistent Memory: Authorization Across the Memory Lifecycle, by Sibo Liu
+ View PDF 
+ HTML (experimental) 
+ TeX Source
+ view license 
+ Ancillary-file links: 
+ Ancillary files ( details ) :
+ README.txt 
+ abm-artifact/CLAIMS.md 
+ abm-artifact/FRESH-MODEL-EXECUTION.md 
+ abm-artifact/LICENSE-APPLICABILITY.json 
+ abm-artifact/LICENSE-README.md 
+ abm-artifact/LICENSE.txt 
+ abm-artifact/MANIFEST.json 
+ abm-artifact/README.md 
+ abm-artifact/RELEASE-README.md 
+ abm-artifact/REPRODUCE.md 
+ abm-artifact/SUPPORTING-LICENSE-APPLICABILITY.json 
+ abm-artifact/SUPPORTING-TABLES.md 
+ abm-artifact/SUPPORTING-THIRD-PARTY-NOTICES.md 
+ abm-artifact/evidence/supporting/METHODS.json 
+ abm-artifact/evidence/supporting/PROJECTION.json 
+ abm-artifact/evidence/supporting/census.json 
+ abm-artifact/evidence/supporting/identity.json 
+ abm-artifact/evidence/supporting/inputs.json 
+ abm-artifact/evidence/supporting/materialization.jsonl 
+ abm-artifact/evidence/supporting/positive.json 
+ abm-artifact/evidence/supporting/utility.json 
+ abm-artifact/expected/supporting/census.csv 
+ abm-artifact/expected/supporting/identity.csv 
+ abm-artifact/expected/supporting/systems.csv 
+ abm-artifact/expected/supporting/utility.csv 
+ abm-artifact/final-analysis/README.md 
+ abm-artifact/final-analysis/arm_rates.py 
+ abm-artifact/final-analysis/expected/ARM-SUBSTITUTION.json 
+ abm-artifact/final-analysis/expected/RESULT.json 
+ abm-artifact/final-analysis/expected/SIGN-TEST-EXPLORATORY.json 
+ abm-artifact/final-analysis/finalize.py 
+ abm-artifact/final-analysis/sign_test.py 
+ abm-artifact/headline-replay/README.md 
+ abm-artifact/headline-replay/data/answer_outcomes_amended_citation_recovery.csv 
+ abm-artifact/headline-replay/data/answer_outcomes_original_protocol.csv 
+ abm-artifact/headline-replay/data/dose_invariance_by_history_arm.csv 
+ abm-artifact/headline-replay/data/dose_recall_temporal_update.csv 
+ abm-artifact/headline-replay/data/h1_exposure_by_history_arm.csv 
+ abm-artifact/headline-replay/data/recall_at_dose8_six_tasks.csv 
+ abm-artifact/headline-replay/data/recall_at_k_by_history_arm.csv 
+ abm-artifact/headline-replay/data/retrieval_reductions.jsonl 
+ abm-artifact/headline-replay/expected/dose_invariance.json 
+ abm-artifact/headline-replay/expected/dose_response.json 
+ abm-artifact/headline-replay/expected/h1_exposure.json 
+ abm-artifact/headline-replay/expected/holm_family.json 
+ abm-artifact/headline-replay/expected/sign_test.json 
+ abm-artifact/headline-replay/expected/substitution_counts.json 
+ abm-artifact/headline-replay/expected/table6_noninferiority.json 
+ abm-artifact/headline-replay/expected/topk_sweep.json 
+ abm-artifact/headline-replay/frozen/abm_analysis/__init__.py 
+ abm-artifact/headline-replay/frozen/abm_analysis/missingness_numeric.py 
+ abm-artifact/headline-replay/frozen/abm_analysis/missingness_supplement.py 
+ abm-artifact/headline-replay/frozen/local_workbench/audience_bound_memory/measurement/design_inference.py 
+ abm-artifact/headline-replay/frozen/local_workbench/audience_bound_memory/measurement/longitudinal_protocol.py 
+ abm-artifact/headline-replay/frozen/local_workbench/audience_bound_memory/measurement/variance_inference.py 
+ abm-artifact/headline-replay/replay_headline.py 
+ abm-artifact/local_workbench/__init__.py 
+ abm-artifact/local_workbench/audience_bound_memory/CONTROLLED_EVALUATION_DATA_PACKAGE_CARD.md 
+ abm-artifact/local_workbench/audience_bound_memory/README.md 
+ abm-artifact/local_workbench/audience_bound_memory/__init__.py 
+ abm-artifact/local_workbench/audience_bound_memory/b_flat.py 
+ abm-artifact/local_workbench/audience_bound_memory/b_graph.py 
+ abm-artifact/local_workbench/audience_bound_memory/backend_contract.py 
+ abm-artifact/local_workbench/audience_bound_memory/backend_shared.py 
+ abm-artifact/local_workbench/audience_bound_memory/backend_sqlite.py 
+ abm-artifact/local_workbench/audience_bound_memory/context.py 
+ abm-artifact/local_workbench/audience_bound_memory/contracts/b_flat_architecture_v1.json 
+ abm-artifact/local_workbench/audience_bound_memory/contracts/b_graph_architecture_v1.json 
+ abm-artifact/local_workbench/audience_bound_memory/contracts/corpus_inventory_v1.json 
+ abm-artifact/local_workbench/audience_bound_memory/contracts/data_package_manifest_v1.json 
+ abm-artifact/local_workbench/audience_bound_memory/contracts/gatemem_audit_input_v1.json 
+ abm-artifact/local_workbench/audience_bound_memory/contracts/gatemem_mapping_summary_v1.json 
+ abm-artifact/local_workbench/audience_bound_memory/contracts/locomo_evidence_audit_input_v1.json 
+ abm-artifact/local_workbench/audience_bound_memory/contracts/longmemeval_audit_input_v1.json 
+ abm-artifact/local_workbench/audience_bound_memory/contracts/longmemeval_cluster_audit_v1.json 
+ abm-artifact/local_workbench/audience_bound_memory/contracts/namespace_contract_v1.json 
+ abm-artifact/local_workbench/audience_bound_memory/contracts/r0_r1_review_v1.json 
+ abm-artifact/local_workbench/audience_bound_memory/contracts/research_contract_v1.json 
+ abm-artifact/local_workbench/audience_bound_memory/contracts/route_b_differential_plan_v1.json 
+ abm-artifact/local_workbench/audience_bound_memory/contracts/route_b_mediation_inventory_v1.json 
+ abm-artifact/local_workbench/audience_bound_memory/contracts/route_b_mutation_plan_v1.json 
+ abm-artifact/local_workbench/audience_bound_memory/contracts/tcb_matrix_v1.json 
+ abm-artifact/local_workbench/audience_bound_memory/contracts/verification_surface_v1.json 
+ abm-artifact/local_workbench/audience_bound_memory/controlled_results.py 
+ abm-artifact/local_workbench/audience_bound_memory/controlled_scenarios.py 
+ abm-artifact/local_workbench/audience_bound_memory/corpus_adapters.py 
+ abm-artifact/local_workbench/audience_bound_memory/data_package.py 
+ abm-artifact/local_workbench/audience_bound_memory/data_package_generation.py 
+ abm-artifact/local_workbench/audience_bound_memory/data_package_replay.py 
+ abm-artifact/local_workbench/audience_bound_memory/evermem_audit.py 
+ abm-artifact/local_workbench/audience_bound_memory/evermem_dataset.py 
+ abm-artifact/local_workbench/audience_bound_memory/evermem_evidence.py 
+ abm-artifact/local_workbench/audience_bound_memory/evermem_overlay.py 
+ abm-artifact/local_workbench/audience_bound_memory/fixtures/controlled_results_v1.jsonl 
+ abm-artifact/local_workbench/audience_bound_memory/fixtures/controlled_scenarios_v1.jsonl 
+ abm-artifact/local_workbench/audience_bound_memory/gatemem_mapping_generation.py 
+ abm-artifact/local_workbench/audience_bound_memory/generic_authority.py 
+ abm-artifact/local_workbench/audience_bound_memory/locomo_audit_generation.py 
+ abm-artifact/local_workbench/audience_bound_memory/locomo_evidence.py 
+ abm-artifact/local_workbench/audience_bound_memory/longmemeval_audit_generation.py 
+ abm-artifact/local_workbench/audience_bound_memory/native_trace.py 
+ abm-artifact/local_workbench/audience_bound_memory/native_trace_validation.py 
+ abm-artifact/local_workbench/audience_bound_memory/records.py 
+ abm-artifact/local_workbench/audience_bound_memory/retrieval.py 
+ abm-artifact/local_workbench/audience_bound_memory/route_b_evidence.py 
+ abm-artifact/local_workbench/audience_bound_memory/scenario_authorization.py 
+ abm-artifact/local_workbench/audience_bound_memory/schema/audience_bound_memory_result_v1.schema.json 
+ abm-artifact/local_workbench/audience_bound_memory/schema/audience_bound_memory_scenario_v1.schema.json 
+ abm-artifact/local_workbench/audience_bound_memory/schema/native_trace_v1.schema.json 
+ abm-artifact/local_workbench/audience_bound_memory/schema_export.py 
+ abm-artifact/local_workbench/audience_bound_memory/schemas.py 
+ abm-artifact/pyproject.toml 
+ abm-artifact/reference-conformance/DEPENDENCY-CONTRACT.json 
+ abm-artifact/reference-conformance/EXPECTED-ASSERTIONS.json 
+ abm-artifact/reference-conformance/OUTPUT-CONTRACT.json 
+ abm-artifact/reference-conformance/README.md 
+ abm-artifact/reference-conformance/SOURCE-INPUTS.json 
+ abm-artifact/reference-conformance/plans/route_b_differential.release-v1.json 
+ abm-artifact/reference-conformance/plans/route_b_mutation_transformation.release-v1.json 
+ abm-artifact/reference-conformance/replay.py 
+ abm-artifact/reference-conformance/requirements.lock 
+ abm-artifact/reference-conformance/third-party-licenses/iniconfig/LICENSE 
+ abm-artifact/reference-conformance/third-party-licenses/packaging/LICENSE 
+ abm-artifact/reference-conformance/third-party-licenses/packaging/LICENSE.APACHE 
+ abm-artifact/reference-conformance/third-party-licenses/packaging/LICENSE.BSD 
+ abm-artifact/reference-conformance/third-party-licenses/pluggy/LICENSE 
+ abm-artifact/reference-conformance/third-party-licenses/pygments/AUTHORS 
+ abm-artifact/reference-conformance/third-party-licenses/pygments/LICENSE 
+ abm-artifact/reference-conformance/third-party-licenses/pytest/LICENSE 
+ abm-artifact/release/environment.lock.json 
+ abm-artifact/release/supporting-replay.json 
+ abm-artifact/reproduce_all.sh 
+ abm-artifact/src/audience_bound_memory_policy/__init__.py 
+ abm-artifact/src/audience_bound_memory_policy/base.py 
+ abm-artifact/src/audience_bound_memory_policy/oracle.py 
+ abm-artifact/src/audience_bound_memory_policy/principals.py 
+ abm-artifact/src/audience_bound_memory_policy/provenance.py 
+ abm-artifact/src/audience_bound_memory_policy/py.typed 
+ abm-artifact/tests/__init__.py 
+ abm-artifact/tests/benchmarks/longmemeval/manifests/extended_36.json 
+ abm-artifact/tests/benchmarks/longmemeval/manifests/stratified_18.json 
+ abm-artifact/tests/local_workbench/audience_bound_memory/backend_grant_support.py 
+ abm-artifact/tests/local_workbench/audience_bound_memory/backend_lineage_support.py 
+ abm-artifact/tests/local_workbench/audience_bound_memory/backend_safety_support.py 
+ abm-artifact/tests/local_workbench/audience_bound_memory/backend_test_support.py 
+ abm-artifact/tests/local_workbench/audience_bound_memory/frozen_workload.py 
+ abm-artifact/tests/local_workbench/audience_bound_memory/helpers.py 
+ abm-artifact/tests/local_workbench/audience_bound_memory/manifests/b_wo1_write_to_context_v1.json 
+ abm-artifact/tests/local_workbench/audience_bound_memory/route_b_campaign_runner.py 
+ abm-artifact/tests/local_workbench/audience_bound_memory/route_b_differential_support.py 
+ abm-artifact/tests/local_workbench/audience_bound_memory/route_b_inherited_grant_support.py 
+ abm-artifact/tests/local_workbench/audience_bound_memory/route_b_metamorphic_support.py 
+ abm-artifact/tests/local_workbench/audience_bound_memory/route_b_mutation_plan_support.py 
+ abm-artifact/tests/local_workbench/audience_bound_memory/route_b_mutation_support.py 
+ abm-artifact/tests/local_workbench/audience_bound_memory/route_b_policy_mutation_support.py 
+ abm-artifact/tests/local_workbench/audience_bound_memory/route_b_random_dimensions.py 
+ abm-artifact/tests/local_workbench/audience_bound_memory/route_b_random_universe.py 
+ abm-artifact/tests/local_workbench/audience_bound_memory/route_b_reference_builders.py 
+ abm-artifact/tests/local_workbench/audience_bound_memory/route_b_reference_model.py 
+ abm-artifact/tests/local_workbench/audience_bound_memory/test_oracle.py 
+ abm-artifact/tests/local_workbench/audience_bound_memory/test_route_b_differential.py 
+ abm-artifact/tests/local_workbench/audience_bound_memory/test_route_b_mutation_plan.py 
+ abm-artifact/tests/local_workbench/audience_bound_memory/test_route_b_mutation_transformation.py 
+ abm-artifact/tests/test_reference_conformance_packaging.py 
+ abm-artifact/third-party/notices/annotated-types/00-LICENSE 
+ abm-artifact/third-party/notices/pydantic-core/00-LICENSE 
+ abm-artifact/third-party/notices/pydantic/00-LICENSE 
+ abm-artifact/third-party/notices/typing-extensions/00-LICENSE 
+ abm-artifact/third-party/notices/typing-inspection/00-LICENSE 
+ abm-artifact/tools/controlled_worker.py 
+ abm-artifact/tools/prepare_controlled.py 
+ abm-artifact/tools/replay_supporting.py 
+ abm-artifact/tools/reproduce.py 
+ abm-artifact/tools/reproduce_supporting.py 
+ abm-artifact/tools/supporting_slot.py 
+ abm-artifact/uv.lock 
+ figure-sources/README.txt 
+ figure-sources/audience-admission-panels.tex 
+ figure-sources/audience-lattice.tikz 
+ figure-sources/dose-recall.tikz 
+ figure-sources/evaluation-design.tikz 
+ figure-sources/holm-family.tikz 
+ figure-sources/lifecycle.tikz 
+ figure-sources/topk-recall.tikz 
+ (179 additional files not shown) 
+ Additional Features
+ Audio Summary 
+ Current browse context:
+ cs.CR
+ < prev 
+   |   
+ next > 
+ new 
+ | 
+ recent 
+ | 2026-09 
+ Change to browse by:
+ cs 
+ cs.AI 
+ References & Citations
+ SciX 
+ Google Scholar 
+ Semantic Scholar 
+ export BibTeX citation 
+ Loading... 
+ BibTeX formatted citation
+ × 
+ loading... 
+ Data provided by: 
+ Bookmark
+ Bibliographic Tools 
+ Bibliographic and Citation Tools
+ Bibliographic Explorer Toggle 
+ Bibliographic Explorer ( What is the Explorer? ) 
+ Connected Papers Toggle 
+ Connected Papers ( What is Connected Papers? ) 
+ Litmaps Toggle 
+ Litmaps ( What is Litmaps? ) 
+ scite.ai Toggle 
+ scite Smart Citations ( What are Smart Citations? ) 
+ Code, Data, Media 
+ Code, Data and Media Associated with this Article
+ alphaXiv Toggle 
+ alphaXiv ( What is alphaXiv? ) 
+ Links to Code Toggle 
+ CatalyzeX Code Finder for Papers ( What is CatalyzeX? ) 
+ DagsHub Toggle 
+ DagsHub ( What is DagsHub? ) 
+ GotitPub Toggle 
+ Gotit.pub ( What is GotitPub? ) 
+ Huggingface Toggle 
+ Hugging Face ( What is Huggingface? ) 
+ ScienceCast Toggle 
+ ScienceCast ( What is ScienceCast? ) 
+ Demos 
+ Demos
+ Replicate Toggle 
+ Replicate ( What is Replicate? ) 
+ Spaces Toggle 
+ Hugging Face Spaces ( What is Spaces? ) 
+ Spaces Toggle 
+ TXYZ.AI ( What is TXYZ.AI? ) 
+ Related Papers 
+ Recommenders and Search Tools
+ Link to Influence Flower 
+ Influence Flower ( What are Influence Flowers? ) 
+ Core recommender toggle 
+ CORE Recommender ( What is CORE? ) 
+ Author 
+ Venue 
+ Institution 
+ Topic 
+ About arXivLabs
+ arXivLabs: experimental projects with community collaborators
+ arXivLabs is a framework that allows collaborators to develop and share new arXiv features directly on our website.
+ Both individuals and organizations that work with arXivLabs have embraced and accepted our values of openness, community, excellence, and user data privacy. arXiv is committed to these values and only works with partners that adhere to them.
+ Have an idea for a project that will add value for arXiv's community? Learn more about arXivLabs .
+ Which authors of this paper are endorsers? |
+ Disable MathJax ( What is MathJax? )
+ We gratefully acknowledge support from our major funders ,
+ member institutions , ,
+ and all contributors.
+ About · 
+ Help · 
+ Contact · 
+ Subscribe · 
+ Copyright · 
+ Privacy · 
+ Accessibility · 
+ Operational Status (opens in new tab) 
+ Major funding support from
+ (opens in new tab) 
+ (opens in new tab) 
+ (opens in new tab)

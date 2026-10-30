@@ -1,0 +1,124 @@
+﻿[2610.29869] Compaction Laundering: Provenance Destruction in Context-Compacting Coding Agents 
+ Skip to main content 
+ Search 
+ Submit 
+ Donate 
+ Log in 
+ Search arXiv 
+ Press Enter to search · Advanced search 
+--> 
+ Computer Science > Cryptography and Security
+ arXiv:2610.29869 (cs)
+ [Submitted on 21 Oct 2026]
+ Title: Compaction Laundering: Provenance Destruction in Context-Compacting Coding Agents
+ Authors: Arshan Dabirsiaghi (Pixee)
+ View a PDF of the paper titled Compaction Laundering: Provenance Destruction in Context-Compacting Coding Agents, by Arshan Dabirsiaghi (Pixee)
+ View PDF 
+ HTML (experimental) 
+ Abstract: Coding agents that run long enough must compact their context, summarizing the conversation, discarding the original, and carrying the summary forward as memory. We show that in popular open-source coding agents this step is an exploitable trust boundary. Harnesses that flatten the typed conversation into a single plain string, marking each message with a text label such as [User]:, destroy message provenance in code, before the summarizer runs. An attacker who controls anything the agent reads can forge a user turn that survives compaction as a genuine instruction. Across five flattening harnesses (pi, opencode, Cline, Aider, OpenHands) the forged approval launders into the agent's memory 87-100% of the time, up to a ~908,000-token context window; across four role-typed harnesses (Codex, Gemini CLI, Qwen Code, Continue) the identical attack succeeds 0% of the time. We follow the attack to executed consequences. A laundered standing approval drives real tool-running agents to execute attacker-controlled
+curl | sh in a sandbox, and end to end in the live pi TUI at ~50% against a 0% paired clean arm. The same channel reliably steers an agent's plan away from a file an attacker designates off-limits, which can blind a code review to a planted backdoor. Because the provenance is destroyed deterministically in harness code, no prompt-level defense can restore it; we measure a code-level provenance check that catches 77% of laundering while demoting 2% of legitimate summary content. The defect also has a straightforward fix at the serializer, escaping the role labels before flattening; the role-typed harnesses avoid it entirely by keeping messages role-typed.
+ Comments: 
+ 29 pages, 5 figures. Source code, raw data, and recorded live demonstrations at this https URL 
+ Subjects: 
+ Cryptography and Security (cs.CR) 
+ Cite as: 
+ arXiv:2610.29869 [cs.CR] 
+ (or 
+ arXiv:2610.29869v1 [cs.CR] for this version)
+ https://doi.org/10.48550/arXiv.2610.29869 
+ Focus to learn more 
+ arXiv-issued DOI via DataCite (pending registration)
+ Submission history
+ From: Arshan Dabirsiaghi [ view email ] [v1] 
+ Wed, 21 Oct 2026 15:24:23 UTC (123 KB) 
+ Full-text links: 
+ Access Paper:
+View a PDF of the paper titled Compaction Laundering: Provenance Destruction in Context-Compacting Coding Agents, by Arshan Dabirsiaghi (Pixee)
+ View PDF 
+ HTML (experimental) 
+ TeX Source
+ view license 
+ Additional Features
+ Audio Summary 
+ Current browse context:
+ cs.CR
+ < prev 
+   |   
+ next > 
+ new 
+ | 
+ recent 
+ | 2026-10 
+ Change to browse by:
+ cs 
+ References & Citations
+ SciX 
+ Google Scholar 
+ Semantic Scholar 
+ export BibTeX citation 
+ Loading... 
+ BibTeX formatted citation
+ × 
+ loading... 
+ Data provided by: 
+ Bookmark
+ Bibliographic Tools 
+ Bibliographic and Citation Tools
+ Bibliographic Explorer Toggle 
+ Bibliographic Explorer ( What is the Explorer? ) 
+ Connected Papers Toggle 
+ Connected Papers ( What is Connected Papers? ) 
+ Litmaps Toggle 
+ Litmaps ( What is Litmaps? ) 
+ scite.ai Toggle 
+ scite Smart Citations ( What are Smart Citations? ) 
+ Code, Data, Media 
+ Code, Data and Media Associated with this Article
+ alphaXiv Toggle 
+ alphaXiv ( What is alphaXiv? ) 
+ Links to Code Toggle 
+ CatalyzeX Code Finder for Papers ( What is CatalyzeX? ) 
+ DagsHub Toggle 
+ DagsHub ( What is DagsHub? ) 
+ GotitPub Toggle 
+ Gotit.pub ( What is GotitPub? ) 
+ Huggingface Toggle 
+ Hugging Face ( What is Huggingface? ) 
+ ScienceCast Toggle 
+ ScienceCast ( What is ScienceCast? ) 
+ Demos 
+ Demos
+ Replicate Toggle 
+ Replicate ( What is Replicate? ) 
+ Spaces Toggle 
+ Hugging Face Spaces ( What is Spaces? ) 
+ Spaces Toggle 
+ TXYZ.AI ( What is TXYZ.AI? ) 
+ Related Papers 
+ Recommenders and Search Tools
+ Link to Influence Flower 
+ Influence Flower ( What are Influence Flowers? ) 
+ Core recommender toggle 
+ CORE Recommender ( What is CORE? ) 
+ Author 
+ Venue 
+ Institution 
+ Topic 
+ About arXivLabs
+ arXivLabs: experimental projects with community collaborators
+ arXivLabs is a framework that allows collaborators to develop and share new arXiv features directly on our website.
+ Both individuals and organizations that work with arXivLabs have embraced and accepted our values of openness, community, excellence, and user data privacy. arXiv is committed to these values and only works with partners that adhere to them.
+ Have an idea for a project that will add value for arXiv's community? Learn more about arXivLabs .
+ Which authors of this paper are endorsers? |
+ Disable MathJax ( What is MathJax? )
+ We gratefully acknowledge support from our major funders ,
+ member institutions , ,
+ and all contributors.
+ About · 
+ Help · 
+ Contact · 
+ Subscribe · 
+ Copyright · 
+ Privacy · 
+ Accessibility · 
+ Operational Status (opens in new tab)

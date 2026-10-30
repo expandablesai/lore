@@ -1,0 +1,6 @@
+# Local M0 RLS proof only — publishes 5432 so host-run vitest can reach the db.
+# Not used by deployment (compose -f must list this file explicitly).
+services:
+  db:
+    ports:
+      - "5432:5432"

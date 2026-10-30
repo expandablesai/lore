@@ -1,0 +1,86 @@
+# lore deploy runbook — expandables-lab (10.20.10.52)
+
+Run these steps on the target host. The repo must be committed and pushed
+from the dev box first (CI and this runbook both pull from the remote).
+The dev-box repo currently has **no commits and no remote** — bootstrap it
+first:
+
+```bash
+git add -A
+git commit -m "lore: M0 monorepo with deploy pipeline"
+git remote add origin <your-lore-repo-url>   # e.g. github.com/<you>/lore
+git push -u origin master
+```
+
+## 0. Prerequisites (one-time)
+
+- Docker Engine + Compose plugin (`docker info`, `docker compose version`)
+- git
+- The lore repository pushed to its remote (bootstrap above)
+
+## 1. Clone
+
+```bash
+git clone <lore-repo-url> /opt/lore
+cd /opt/lore
+```
+
+## 2. Secrets
+
+```bash
+mkdir -p deploy/compose
+printf 'POSTGRES_PASSWORD=<strong-random>\n' > deploy/compose/.env
+```
+
+`POSTGRES_PASSWORD` feeds both the `db` superuser password and the app's
+`DATABASE_URL` (`postgresql://lore:${POSTGRES_PASSWORD}@db:5432/lore`).
+
+## 3. Database volume
+
+The `db` service bind-mounts `/srv/lore/pgdata`; PostgreSQL needs it owned by
+its container user (uid 999):
+
+```bash
+sudo install -d -o 999 -g 999 /srv/lore/pgdata
+```
+
+## 4. Start PostgreSQL 17 + pgvector and wait until healthy
+
+```bash
+docker compose -f deploy/compose/docker-compose.yml up -d db
+docker compose -f deploy/compose/docker-compose.yml ps   # db → healthy
+```
+
+## 5. Provision schema + RLS (one-off containers, same network as db)
+
+```bash
+docker compose -f deploy/compose/docker-compose.yml run --rm app pnpm db:migrate
+docker compose -f deploy/compose/docker-compose.yml run --rm app pnpm db:apply-rls
+```
+
+- `db:migrate` applies `packages/db/migrations` (includes
+  `CREATE EXTENSION vector` and the 16-table init batch).
+- `db:apply-rls` runs `packages/db/apply-rls.mjs` (roles, SECURITY DEFINER
+  function, RLS policies, grants). Run it **once** against the freshly
+  migrated database — it is not idempotent.
+
+## 6. Start the app stack
+
+```bash
+docker compose -f deploy/compose/docker-compose.yml up -d
+docker compose -f deploy/compose/docker-compose.yml ps
+```
+
+Services: `db` (no published ports), `app` (API on 3001), `worker`,
+`web` (one-shot: copies `apps/web/dist` from the app image into the
+`web_dist` volume), `caddy` (80/443: serves the web SPA at `:80` with
+SPA fallback and proxies `/api/*` — prefix stripped — to `app:3001`).
+
+## 7. Smoke check
+
+```bash
+curl -fsS http://localhost/ >/dev/null && echo web-ok
+curl -fsS http://localhost/api/healthz && echo api-ok
+docker compose -f deploy/compose/docker-compose.yml exec -T db \
+  pg_isready -U lore
+```

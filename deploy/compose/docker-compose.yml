@@ -1,0 +1,88 @@
+name: lore
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: lore
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lore}
+      POSTGRES_DB: lore
+    volumes:
+      - /srv/lore/pgdata:/var/lib/postgresql/data
+    command: >
+      postgres -c shared_buffers=512MB -c effective_cache_size=2GB
+               -c maintenance_work_mem=128MB -c work_mem=16MB
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lore"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  app:
+    image: ghcr.io/expandyne/lore:latest
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://lore:${POSTGRES_PASSWORD:-lore}@db:5432/lore
+      NODE_OPTIONS: "--max-old-space-size=1024"
+      HOST: 0.0.0.0
+    ports:
+      - "3001:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+
+  worker:
+    image: ghcr.io/expandyne/lore:latest
+    command: ["node", "apps/worker/dist/index.js"]
+    environment:
+      DATABASE_URL: postgresql://lore:${POSTGRES_PASSWORD:-lore}@db:5432/lore
+      NODE_OPTIONS: "--max-old-space-size=512"
+    depends_on:
+      db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  web:
+    image: ghcr.io/expandyne/lore:latest
+    entrypoint: ["sh", "-c", "cp -a apps/web/dist/. /web_dist/"]
+    volumes:
+      - web_dist:/web_dist
+    restart: "no"
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - web_dist:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_completed_successfully
+      app:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+volumes:
+  caddy_data:
+  caddy_config:
+  web_dist:

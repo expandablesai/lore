@@ -1,0 +1,29 @@
+{
+  "name": "@lore/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts",
+    "./rls": "./src/rls.ts"
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "migrate": "drizzle-kit migrate",
+    "push": "drizzle-kit push",
+    "apply-rls": "node apply-rls.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.4",
+    "postgres": "3.4.9",
+    "pg-boss": "12.38.0"
+  },
+  "devDependencies": {
+    "drizzle-kit": "0.31.11",
+    "typescript": "5.x",
+    "vitest": "3.x"
+  }
+}

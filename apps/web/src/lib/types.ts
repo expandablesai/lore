@@ -133,3 +133,16 @@ export interface OrgLlmKey {
   provider: string;
   createdAt: string;
 }
+
+export interface ChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+export interface ChatInput {
+  messages: ChatMessage[];
+}
+
+export interface ChatReply {
+  message: { role: "assistant"; content: string };
+}

@@ -4,6 +4,7 @@ import { cn } from "@lore/ui";
 import type { ReactNode } from "react";
 import { useAuth } from "./lib/auth";
 import { useNav } from "./lib/nav";
+import { Chat } from "./views/Chat";
 import { Dashboard } from "./views/Dashboard";
 import { DocumentDetail } from "./views/DocumentDetail";
 import { Documents } from "./views/Documents";
@@ -14,6 +15,7 @@ import { Button, type ViewProps } from "./views/common";
 
 const NAV: { label: string; path: string; adminOnly?: boolean }[] = [
   { label: "Dashboard", path: "/" },
+  { label: "Chat", path: "/chat" },
   { label: "Documents", path: "/documents" },
   { label: "Memory", path: "/memory" },
   { label: "Members", path: "/members" },
@@ -34,6 +36,7 @@ export function Shell() {
 
   let view: ReactNode;
   if (path === "/") view = <Dashboard {...viewProps} />;
+  else if (path === "/chat") view = <Chat {...viewProps} />;
   else if (path === "/documents") view = <Documents {...viewProps} />;
   else if (path.startsWith("/documents/"))
     view = <DocumentDetail {...viewProps} id={decodeURIComponent(path.slice("/documents/".length))} />;

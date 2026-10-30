@@ -7,6 +7,8 @@
 import type {
   Assertion,
   AuthUser,
+  ChatInput,
+  ChatReply,
   Chunk,
   DocumentDetail,
   DocumentSummary,
@@ -210,5 +212,7 @@ export const api = {
   testLlmKey: (token: string, orgId: string, keyId: string) =>
     request<{ ok: boolean; model: string; reply: string }>(`/orgs/${orgId}/llm-keys/${keyId}/test`, { method: "POST", token }),
 
+  chat: (token: string, input: ChatInput) =>
+    request<ChatReply>("/chat", { method: "POST", token, body: input }),
   health: () => request<{ ok: boolean }>("/healthz"),
 };

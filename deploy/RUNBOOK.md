@@ -52,10 +52,14 @@ cd /opt/lore
 ```bash
 mkdir -p deploy/compose
 printf 'POSTGRES_PASSWORD=<strong-random>\n' > deploy/compose/.env
+printf 'LORE_ENCRYPTION_KEY=<32-byte-hex>\n' >> deploy/compose/.env
 ```
 
 `POSTGRES_PASSWORD` feeds both the `db` superuser password and the app's
 `DATABASE_URL` (`postgresql://lore:${POSTGRES_PASSWORD}@db:5432/lore`).
+`LORE_ENCRYPTION_KEY` (32 random bytes, 64 hex) is the AES-256-GCM key the
+`app`/`worker` use to encrypt provider API keys at rest; it must stay stable
+across redeploys or already-stored keys won't decrypt.
 
 ## 3. Database volume
 

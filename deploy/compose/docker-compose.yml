@@ -31,6 +31,7 @@ services:
       DATABASE_URL: postgresql://lore:${POSTGRES_PASSWORD:-lore}@db:5432/lore
       NODE_OPTIONS: "--max-old-space-size=1024"
       HOST: 0.0.0.0
+      LORE_ENCRYPTION_KEY: ${LORE_ENCRYPTION_KEY}
     ports:
       - "3001:3001"
     depends_on:
@@ -47,6 +48,7 @@ services:
     environment:
       DATABASE_URL: postgresql://lore:${POSTGRES_PASSWORD:-lore}@db:5432/lore
       NODE_OPTIONS: "--max-old-space-size=512"
+      LORE_ENCRYPTION_KEY: ${LORE_ENCRYPTION_KEY}
     depends_on:
       db:
         condition: service_healthy

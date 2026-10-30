@@ -17,7 +17,6 @@ import { createOpenAIEmbedder } from "@lore/proxy";
 import { extractByMime } from "./extract.ts";
 
 const SHUTDOWN_SIGNALS = ["SIGTERM", "SIGINT"] as const;
-const EMBED_MODEL = "text-embedding-3-large";
 
 /** Resolve a storage key to a local file path. */
 function resolveStoragePath(storageKey: string): string {
@@ -71,19 +70,19 @@ async function ingestDocument(
     const { getDocumentChunks } = await import("@lore/db");
     const storedChunks = await getDocumentChunks(db, documentId);
 
-    const apiKey = await revealActiveLlmKey(db, orgId);
-    if (apiKey) {
-      const embedder = createOpenAIEmbedder({ apiKey });
-      const vecs = await embedder.embed(storedChunks.map((c) => c.text), EMBED_MODEL);
+    const key = await revealActiveLlmKey(db, orgId);
+    if (key) {
+      const embedder = createOpenAIEmbedder({ apiKey: key.apiKey, baseUrl: key.baseUrl });
+      const vecs = await embedder.embed(storedChunks.map((c) => c.text), key.embedModel);
       for (let i = 0; i < storedChunks.length; i++) {
         const chunk = storedChunks[i];
         if (!chunk) continue;
         embeddingRows.push({
           entityType: "chunk",
           entityId: chunk.id,
-          model: EMBED_MODEL,
-          dim: EMBEDDING_DIM,
-          vec: vectorToPgText(vecs[i] ?? new Float32Array(EMBEDDING_DIM)),
+          model: key.embedModel,
+          dim: key.embedDim,
+          vec: vectorToPgText(zeroPad(vecs[i] ?? new Float32Array(key.embedDim), EMBEDDING_DIM)),
         });
       }
     } else {

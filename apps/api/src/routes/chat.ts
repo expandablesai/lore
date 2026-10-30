@@ -9,7 +9,7 @@ import {
 } from "@lore/db";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { createOpenAIAdapter, createOpenAIEmbedder } from "@lore/proxy";
-import { EMBEDDING_DIM, vectorToPgText } from "@lore/core";
+import { EMBEDDING_DIM, vectorToPgText, zeroPad } from "@lore/core";
 
 /**
  * In-app chat — retrieves the caller's org memories by cosine similarity over
@@ -44,8 +44,8 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
         const { messages } = request.body;
         const question = messages[messages.length - 1]?.content ?? "";
 
-        const apiKey = await revealActiveLlmKey(db, user.orgId);
-        if (!apiKey) {
+        const key = await revealActiveLlmKey(db, user.orgId);
+        if (!key) {
           return reply
             .code(502)
             .send({ error: "no active LLM key for this org" });
@@ -65,10 +65,13 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
             .orderBy(
               sql`${embeddings.vec} <=> ${
                 vectorToPgText(
-                  (await createOpenAIEmbedder({ apiKey }).embed(
-                    question,
-                    "text-embedding-3-large",
-                  ))[0] ?? new Float32Array(EMBEDDING_DIM),
+                  zeroPad(
+                    (await createOpenAIEmbedder({ apiKey: key.apiKey, baseUrl: key.baseUrl }).embed(
+                      question,
+                      key.embedModel,
+                    ))[0] ?? new Float32Array(EMBEDDING_DIM),
+                    EMBEDDING_DIM,
+                  ),
                 )
               }::vector`,
             )
@@ -76,9 +79,9 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
         );
         const memory = rows.map((r) => r.text).join("\n\n");
 
-        const adapter = createOpenAIAdapter({ apiKey });
+        const adapter = createOpenAIAdapter({ apiKey: key.apiKey, baseUrl: key.baseUrl });
         const res = await adapter.chatCompletions({
-          model: "gpt-4o",
+          model: key.chatModel,
           messages: [
             {
               role: "system",

@@ -25,7 +25,11 @@ const keyParams = z.object({ id: z.string(), keyId: z.string() });
 const addBody = z.object({
   label: z.string().min(1).max(200),
   apiKey: z.string().min(8).max(200),
-  provider: z.enum(["openai"]).optional(),
+  provider: z.string().min(1).max(50).optional(),
+  baseUrl: z.string().url().optional(),
+  chatModel: z.string().min(1).max(200).optional(),
+  embedModel: z.string().min(1).max(200).optional(),
+  embedDim: z.number().int().min(1).max(3072).optional(),
 });
 
 export const createLlmKeyRoutes: (db: Db) => FastifyPluginAsyncZod = (db) => async (app) => {
@@ -53,12 +57,16 @@ export const createLlmKeyRoutes: (db: Db) => FastifyPluginAsyncZod = (db) => asy
       if (request.params.id !== request.user.orgId || !isOrgAdmin(request.user)) {
         return reply.code(403).send({ error: "forbidden" });
       }
-      const { label, apiKey, provider } = request.body;
+      const { label, apiKey, provider, baseUrl, chatModel, embedModel, embedDim } = request.body;
       const rows = await insertLlmKey(db, {
         orgId: request.params.id,
         label,
         apiKey,
         provider,
+        baseUrl,
+        chatModel,
+        embedModel,
+        embedDim,
       });
       const row = rows[0];
       if (!row) throw new Error("llm key insert failed");
@@ -102,12 +110,12 @@ export const createLlmKeyRoutes: (db: Db) => FastifyPluginAsyncZod = (db) => asy
       if (request.params.id !== request.user.orgId || !isOrgAdmin(request.user)) {
         return reply.code(403).send({ error: "forbidden" });
       }
-      const apiKey = await revealLlmKey(db, request.params.keyId);
-      if (!apiKey) return reply.code(404).send({ error: "not found" });
+      const key = await revealLlmKey(db, request.params.keyId);
+      if (!key) return reply.code(404).send({ error: "not found" });
       try {
-        const adapter = createOpenAIAdapter({ apiKey });
+        const adapter = createOpenAIAdapter({ apiKey: key.apiKey, baseUrl: key.baseUrl });
         const res = await adapter.chatCompletions({
-          model: "gpt-4o-mini",
+          model: key.chatModel,
           messages: [{ role: "user", content: "ping" }],
         });
         return { ok: true, model: res.model, reply: res.choices[0]?.message.content ?? "" };

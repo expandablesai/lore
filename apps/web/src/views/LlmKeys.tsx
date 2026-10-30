@@ -1,13 +1,29 @@
 // LlmKeys: list the organization's LLM provider keys and (for admins) add,
 // revoke, and test them. The API key is write-only — it is never shown after
-// the add form collects it once.
+// the add form collects it once. A provider preset prefills the base URL and
+// models; every field stays editable so any OpenAI-compatible endpoint works.
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../lib/api";
 import type { OrgLlmKey } from "../lib/types";
 import { Badge, Button, ErrorNote, Field, Panel, StatusLine, errMessage, type ViewProps } from "./common";
 
-const PROVIDERS = ["openai"];
+interface ProviderPreset {
+  id: string;
+  label: string;
+  baseUrl: string;
+  chatModel: string;
+  embedModel: string;
+  embedDim: number;
+}
+
+const PROVIDERS: ProviderPreset[] = [
+  { id: "openai", label: "OpenAI", baseUrl: "https://api.openai.com/v1", chatModel: "gpt-4o", embedModel: "text-embedding-3-large", embedDim: 3072 },
+  { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com/v1", chatModel: "deepseek-chat", embedModel: "text-embedding-3-large", embedDim: 3072 },
+  { id: "ollama", label: "Ollama", baseUrl: "http://localhost:11434/v1", chatModel: "llama3.1", embedModel: "nomic-embed-text", embedDim: 768 },
+  { id: "strata", label: "Strata", baseUrl: "", chatModel: "", embedModel: "", embedDim: 0 },
+  { id: "custom", label: "Custom", baseUrl: "", chatModel: "", embedModel: "", embedDim: 0 },
+];
 
 function canManage(role: string): boolean {
   return role === "superadmin" || role === "org_admin";
@@ -21,6 +37,10 @@ export function LlmKeys({ token, user }: ViewProps) {
   const [label, setLabel] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [provider, setProvider] = useState("openai");
+  const [baseUrl, setBaseUrl] = useState("https://api.openai.com/v1");
+  const [chatModel, setChatModel] = useState("gpt-4o");
+  const [embedModel, setEmbedModel] = useState("text-embedding-3-large");
+  const [embedDim, setEmbedDim] = useState(3072);
   const [addError, setAddError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -39,15 +59,24 @@ export function LlmKeys({ token, user }: ViewProps) {
     load();
   }, [load]);
 
+  function selectProvider(id: string) {
+    setProvider(id);
+    const preset = PROVIDERS.find((p) => p.id === id);
+    if (!preset) return;
+    setBaseUrl(preset.baseUrl);
+    setChatModel(preset.chatModel);
+    setEmbedModel(preset.embedModel);
+    setEmbedDim(preset.embedDim || 3072);
+  }
+
   async function onAdd(event: FormEvent) {
     event.preventDefault();
     setAdding(true);
     setAddError(null);
     try {
-      await api.addLlmKey(token, orgId, { label, apiKey, provider });
+      await api.addLlmKey(token, orgId, { label, apiKey, provider, baseUrl, chatModel, embedModel, embedDim });
       setLabel("");
       setApiKey("");
-      setProvider("openai");
       load();
     } catch (e) {
       setAddError(errMessage(e));
@@ -94,16 +123,20 @@ export function LlmKeys({ token, user }: ViewProps) {
                 <span className="text-sm font-medium text-slate-300">Provider</span>
                 <select
                   value={provider}
-                  onChange={(e) => setProvider(e.target.value)}
+                  onChange={(e) => selectProvider(e.target.value)}
                   className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100"
                 >
                   {PROVIDERS.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
+                    <option key={p.id} value={p.id}>
+                      {p.label}
                     </option>
                   ))}
                 </select>
               </label>
+              <Field label="Base URL" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} required />
+              <Field label="Chat model" value={chatModel} onChange={(e) => setChatModel(e.target.value)} required />
+              <Field label="Embedding model" value={embedModel} onChange={(e) => setEmbedModel(e.target.value)} />
+              <Field label="Embedding dimension" type="number" value={String(embedDim)} onChange={(e) => setEmbedDim(Number(e.target.value))} />
             </div>
             {addError && <ErrorNote message={addError} />}
             <Button type="submit" disabled={adding}>
@@ -124,6 +157,7 @@ export function LlmKeys({ token, user }: ViewProps) {
               <li key={k.id} className="flex items-center justify-between gap-3 py-3">
                 <div className="min-w-0">
                   <p className="truncate text-sm text-slate-100">{k.label}</p>
+                  <p className="text-xs text-slate-500">{k.provider} · {k.chatModel}</p>
                   <p className="text-xs text-slate-500">{k.createdAt}</p>
                   {testResult && testResult.id === k.id && (
                     <p className={"mt-1 text-xs " + (testResult.ok ? "text-emerald-300" : "text-rose-300")}>

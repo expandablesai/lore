@@ -108,6 +108,10 @@ export interface AddLlmKeyInput {
   label: string;
   apiKey: string;
   provider?: string;
+  baseUrl?: string;
+  chatModel?: string;
+  embedModel?: string;
+  embedDim?: number;
 }
 
 export interface RememberInput {
@@ -201,7 +205,7 @@ export const api = {
     request<OrgLlmKey[]>(`/orgs/${orgId}/llm-keys`, { token }),
 
   addLlmKey: (token: string, orgId: string, input: AddLlmKeyInput) =>
-    request<{ id: string; orgId: string; label: string; provider: string; createdAt: string }>(
+    request<{ id: string; orgId: string; label: string; provider: string; baseUrl: string; chatModel: string; embedModel: string; embedDim: number; createdAt: string }>(
       `/orgs/${orgId}/llm-keys`,
       { method: "POST", token, body: input },
     ),

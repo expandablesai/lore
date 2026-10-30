@@ -64,9 +64,9 @@ export const createMemoryRoutes: (db: Db) => FastifyPluginAsync = (db) => async 
         if (query) {
           // Hybrid recall: lexical subject match OR semantic nearest source documents
           // (cosine over the caller's org chunk embeddings). Scoped to the caller's org.
-          const apiKey = await revealActiveLlmKey(db, user.orgId);
-          const qvec = apiKey
-            ? (await createOpenAIEmbedder({ apiKey }).embed(query, "text-embedding-3-large"))[0]
+          const key = await revealActiveLlmKey(db, user.orgId);
+          const qvec = key
+            ? zeroPad((await createOpenAIEmbedder({ apiKey: key.apiKey, baseUrl: key.baseUrl }).embed(query, key.embedModel))[0] ?? new Float32Array(EMBEDDING_DIM), EMBEDDING_DIM)
             : zeroPad(deterministicEmbed(query, HASH_DIM), EMBEDDING_DIM);
           const qtext = vectorToPgText(qvec ?? new Float32Array(EMBEDDING_DIM));
           conditions.push(

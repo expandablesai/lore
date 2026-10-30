@@ -31,14 +31,16 @@ describe("RLS cross-tenant isolation", () => {
   });
 
   test("user A cannot read user B's personal assertions", async () => {
-    // Set user A's context
-    await db.execute(sql`SELECT set_config('lore.org_id', '00000000-0000-0000-0000-000000000001', true)`);
-    await db.execute(sql`SELECT set_config('lore.user_id', '00000000-0000-0000-0000-00000000000a', true)`);
-
-    // Query assertions — should not see user B's personal rows
-    const rows = await db.execute(sql`
-      SELECT * FROM assertions WHERE scope = 'personal'
-    `);
+    // Run as lore_app in a transaction — superuser would bypass RLS
+    const rows = await db.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL ROLE lore_app`);
+      await tx.execute(sql`SELECT set_config('lore.org_id', '00000000-0000-0000-0000-000000000001', true)`);
+      await tx.execute(sql`SELECT set_config('lore.user_id', '00000000-0000-0000-0000-00000000000a', true)`);
+      // Query assertions — should not see user B's personal rows
+      return tx.execute(sql`
+        SELECT * FROM assertions WHERE scope = 'personal'
+      `);
+    });
     // User B's personal assertion (org 2, owner B) must not appear
     const leaked = rows.filter((r: any) => r.owner_user_id === '00000000-0000-0000-0000-00000000000b');
     expect(leaked).toHaveLength(0);
@@ -46,10 +48,13 @@ describe("RLS cross-tenant isolation", () => {
 
   test("RESTRICTIVE tenant_isolation ANDs with permissive policies", async () => {
     // Even if scope_isolation passes, tenant_isolation must still filter
-    await db.execute(sql`SELECT set_config('lore.org_id', '00000000-0000-0000-0000-000000000002', true)`);
-    await db.execute(sql`SELECT set_config('lore.user_id', '00000000-0000-0000-0000-00000000000a', true)`);
-
-    const rows = await db.execute(sql`SELECT * FROM assertions`);
+    // Run as lore_app — superuser would bypass RLS and see every org's rows
+    const rows = await db.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL ROLE lore_app`);
+      await tx.execute(sql`SELECT set_config('lore.org_id', '00000000-0000-0000-0000-000000000002', true)`);
+      await tx.execute(sql`SELECT set_config('lore.user_id', '00000000-0000-0000-0000-00000000000a', true)`);
+      return tx.execute(sql`SELECT * FROM assertions`);
+    });
     const leaked = rows.filter((r: any) => r.org_id !== '00000000-0000-0000-0000-000000000002');
     expect(leaked).toHaveLength(0);
   });

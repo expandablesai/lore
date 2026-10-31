@@ -32,13 +32,13 @@ const register = new client.Registry();
 client.collectDefaultMetrics({ register });
 
 export function createApp(db: Db = createDb()): FastifyInstance {
-  const app = Fastify({ logger: true }).withTypeProvider<ZodTypeProvider>();
+  const app = Fastify({ logger: true, bodyLimit: 50 * 1024 * 1024 }).withTypeProvider<ZodTypeProvider>();
 
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
   app.register(cors);
-  app.register(multipart);
+  app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
 
   app.register(healthRoutes);
   app.register(createAuthRoutes(db));

@@ -43,12 +43,25 @@ const chatBody = z.object({
     .array(
       z.object({
         role: z.enum(["system", "user", "assistant"]),
-        content: z.string().min(1).max(8000),
+        // Assistant turns can legitimately be empty: a model asked for
+        // something it cannot do sometimes returns no text at all. Rejecting
+        // those here made the *next* question fail with a bare "Bad Request",
+        // so emptiness is filtered below instead of forbidden.
+        content: z.string().max(8000),
       }),
     )
     .min(1)
     .max(50),
 });
+
+/** What LORE can actually do. The model is told, or it invents capabilities. */
+const CAPABILITIES = [
+  "You are EXPANDABLES LORE, a private memory assistant.",
+  "You CAN: search this workspace's indexed documents and images, answer from what you retrieve, and refer to images the user is shown with your reply.",
+  "You CANNOT: generate or edit images, browse the web, run code or shell commands, read files that are not in this workspace, or send email.",
+  "When asked for something you cannot do, say so plainly in one short sentence and name one thing you can do instead.",
+  "Never list a capability you were not given here.",
+].join("\n");
 
 /** One image attached to a reply; the console fetches the bytes itself. */
 export interface ChatImage {
@@ -96,8 +109,13 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
       { schema: { body: chatBody } },
       async (request, reply) => {
         const user = request.user;
-        const { messages } = request.body;
-        const question = messages[messages.length - 1]?.content ?? "";
+        // Blank turns are dropped rather than sent upstream: an empty assistant
+        // message carries no meaning and some providers reject the request.
+        const messages = request.body.messages.filter((m) => m.content.trim() !== "");
+        const question = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+        if (question === "") {
+          return reply.code(400).send({ error: "a question is required" });
+        }
 
         // The conversation this turn belongs to: an existing chat, or a new one
         // named after the opening question so history stays recognisable.
@@ -240,15 +258,28 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
           messages: [
             {
               role: "system",
-              content: `You are the EXPANDABLES LORE assistant. Ground your answer in the retrieved memories when relevant.\n\n${memory}${shown}`,
+              content: [
+                CAPABILITIES,
+                "",
+                "Ground your answer in the retrieved memories when they are relevant; say when they are not.",
+                memory === "" ? "No memories were retrieved for this question." : "",
+                shown,
+              ]
+                .filter((line) => line !== "")
+                .join("\n"),
             },
             ...messages,
           ],
         });
-        const message = res.choices[0]?.message ?? {
-          role: "assistant",
-          content: "",
-        };
+        const upstream = res.choices[0]?.message;
+        // A provider can return no text at all, and a blank bubble with no
+        // explanation reads as a broken app. Say what happened instead.
+        const content =
+          upstream?.content?.trim() ||
+          (images.length > 0
+            ? "No text came back with these images."
+            : "The model returned no answer for that. Try rephrasing the question.");
+        const message = { role: "assistant" as const, content };
 
         // Record the turn only once it is complete: a question whose answer
         // never arrived is not history worth reloading.

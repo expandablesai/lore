@@ -30,6 +30,13 @@ function visibleText(turn: Turn): string {
   return turn.content.replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+/** What to render for an answer that carried no text at all. */
+function answerText(turn: Turn): string {
+  const text = visibleText(turn);
+  if (text !== "") return text;
+  return (turn.images ?? []).length > 0 ? "" : "No answer came back for that one.";
+}
+
 /** Tell the shell that the chat list changed. */
 function announceHistoryChange() {
   window.dispatchEvent(new Event("lore:chats-changed"));
@@ -123,7 +130,7 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
 
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col">
-      <header className="mb-4 flex items-center justify-between gap-4">
+      <header className="glass sticky top-0 z-10 mb-4 flex items-center justify-between gap-4 rounded-2xl px-4 py-3">
         <div>
           <h1 className="text-lg font-semibold tracking-tight text-slate-100">Chat</h1>
           <p className="text-xs text-slate-400">
@@ -170,7 +177,7 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
                 </span>
                 <div className="min-w-0 flex-1 space-y-3">
                   <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-200">
-                    {visibleText(turn)}
+                    {answerText(turn)}
                   </div>
                   {(turn.images ?? []).length > 0 && (
                     <>

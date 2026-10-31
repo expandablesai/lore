@@ -48,9 +48,16 @@ interface RequestOptions {
 }
 
 function messageFrom(status: number, data: unknown, fallback: string): string {
-  if (data && typeof data === "object" && "error" in data) {
-    const err = (data as { error: unknown }).error;
-    if (typeof err === "string" && err.length > 0) return err;
+  if (data && typeof data === "object") {
+    if ("error" in data) {
+      const err = (data as { error: unknown }).error;
+      if (typeof err === "string" && err.length > 0) return err;
+    }
+    // Fastify's own validation failures carry `message`, not `error`.
+    if ("message" in data) {
+      const message = (data as { message: unknown }).message;
+      if (typeof message === "string" && message.length > 0) return message;
+    }
   }
   return fallback || `HTTP ${status}`;
 }

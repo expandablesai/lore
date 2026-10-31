@@ -87,10 +87,14 @@ export function ImageThumb({
     <div className="group relative overflow-hidden rounded-2xl border border-[rgb(var(--glass-border))] bg-slate-950/30">
       {url ? (
         <button type="button" onClick={onOpen} className="block w-full cursor-zoom-in">
-          <img src={url} alt={image.filename} className="max-h-80 w-full object-cover" />
+          <img
+            src={url}
+            alt={image.filename}
+            className="aspect-[4/3] w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+          />
         </button>
       ) : (
-        <div className="h-40 w-full animate-pulse bg-slate-800/40" />
+        <div className="aspect-[4/3] w-full animate-pulse bg-slate-800/40" />
       )}
       <button
         type="button"

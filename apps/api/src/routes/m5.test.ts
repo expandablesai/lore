@@ -106,6 +106,48 @@ describe("M5 chat history", () => {
     expect(messages).toHaveLength(4);
   });
 
+  test("an empty assistant turn in the history does not break the next question", async () => {
+    // A model asked for something it cannot do sometimes answers with no text;
+    // that blank turn used to make the following request fail validation.
+    vi.stubGlobal("fetch", anthropicReply("I cannot generate images, but I can find yours."));
+    const r = await app.inject({
+      method: "POST", url: "/chat",
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        chatId,
+        messages: [
+          { role: "user", content: "generate an image of a beach" },
+          { role: "assistant", content: "" },
+          { role: "user", content: "what can you actually do" },
+        ],
+      },
+    });
+    expect(r.statusCode).toBe(200);
+    expect((r.json() as { message: { content: string } }).message.content).toContain("cannot generate images");
+  });
+
+  test("a question with no text at all is refused with a message", async () => {
+    const r = await app.inject({
+      method: "POST", url: "/chat",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { messages: [{ role: "user", content: "   " }] },
+    });
+    expect(r.statusCode).toBe(400);
+    expect((r.json() as { error: string }).error).toMatch(/question is required/i);
+  });
+
+  test("an answer with no text is replaced with something readable", async () => {
+    vi.stubGlobal("fetch", anthropicReply(""));
+    const r = await app.inject({
+      method: "POST", url: "/chat",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { messages: [{ role: "user", content: "answer nothing" }] },
+    });
+    expect(r.statusCode).toBe(200);
+    const body = r.json() as { message: { content: string } };
+    expect(body.message.content.length).toBeGreaterThan(0);
+    expect(body.message.content).toMatch(/no answer/i);
+  });
   test("a chat is private to the person who started it", async () => {
     const suffix = crypto.randomUUID().slice(0, 8);
     const other = await app.inject({

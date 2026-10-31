@@ -5,7 +5,7 @@
  * by RLS at the row level; callers wrap in withRls() where needed.
  */
 
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, inArray, lt, sql } from "drizzle-orm";
 import type { Db } from "./client.js";
 import { documents, chunks, embeddings, users } from "./schema.js";
 
@@ -151,6 +151,47 @@ export async function updateDocumentStatus(
     values.extractedAt = new Date();
   }
   await db.update(documents).set(values).where(eq(documents.id, id));
+}
+
+/**
+ * Documents whose extraction never finished.
+ *
+ * A worker that dies between "status = extracting" and the final write leaves a
+ * row no job will ever touch again: the queue retries its own job or gives up,
+ * but nothing revisits the document, so it reads "extracting" forever and
+ * re-uploading the same bytes is treated as already present. These are the
+ * candidates; the caller decides which of them still have a live job.
+ */
+export async function listExtractingDocuments(
+  db: Db,
+  olderThanMs: number,
+): Promise<{ id: string; orgId: string; filename: string }[]> {
+  const cutoff = new Date(Date.now() - olderThanMs);
+  return db
+    .select({ id: documents.id, orgId: documents.orgId, filename: documents.filename })
+    .from(documents)
+    .where(and(eq(documents.status, "extracting"), lt(documents.createdAt, cutoff)));
+}
+
+/**
+ * Close out extraction attempts that nothing is working on any more.
+ *
+ * The row is marked failed with a reason a reader can act on rather than being
+ * silently re-queued: a file that kills its worker would otherwise loop for
+ * ever, and "Reprocess" is one click on the document screen.
+ */
+export async function failStuckDocuments(
+  db: Db,
+  ids: string[],
+  reason: string,
+): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const rows = await db
+    .update(documents)
+    .set({ status: "failed", error: reason, extractedAt: new Date() })
+    .where(and(inArray(documents.id, ids), eq(documents.status, "extracting")))
+    .returning({ id: documents.id });
+  return rows.map((row) => row.id);
 }
 
 /** List documents for an org (paginated). */

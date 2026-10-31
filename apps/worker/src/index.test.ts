@@ -2,7 +2,7 @@
 // (canEmbedKey) decides real vectors vs deterministic hash.
 import { describe, expect, it } from "vitest";
 import { canEmbedKey, type RevealedKey } from "@lore/db";
-import { planEmbedding } from "./index.ts";
+import { orphanedExtractions, planEmbedding } from "./index.ts";
 
 function key(over: Partial<RevealedKey>): RevealedKey {
   return {
@@ -66,5 +66,22 @@ describe("embedding plan (which vector space a document lands in)", () => {
     expect(planEmbedding([key({ apiType: "anthropic", embedModel: "claude-embed" })], null)).toEqual({
       space: "hash",
     });
+  });
+});
+
+describe("abandoned extractions (which stuck documents nothing is working on)", () => {
+  const stuck = [{ id: "a" }, { id: "b" }, { id: "c" }];
+
+  it("treats every candidate as abandoned when the queue is empty", () => {
+    expect(orphanedExtractions(stuck, new Set())).toEqual(["a", "b", "c"]);
+  });
+
+  it("never fails a document another worker still holds", () => {
+    // `b` has a queued or running job: touching it would fail a healthy upload.
+    expect(orphanedExtractions(stuck, new Set(["b"]))).toEqual(["a", "c"]);
+  });
+
+  it("says nothing when nothing is stuck", () => {
+    expect(orphanedExtractions([], new Set(["a"]))).toEqual([]);
   });
 });

@@ -280,9 +280,10 @@ d3fde22 retry a silent provider once, and name the model that went quiet
 - Retrieval depth is top-6 chunks with no per-document or per-episode scoping,
   so a generic question ("according to the project record…") can rank other
   documents above the intended one; a distinctive term retrieves correctly.
-- A worker that dies mid-job can leave a document in `extracting` (no heartbeat
-  or startup reconciliation yet); re-uploading the same bytes is then treated as
-  already present.
+- A worker that dies mid-job used to leave a document in `extracting` for ever
+  (no heartbeat or startup reconciliation), which also made re-uploading the same
+  bytes look like a duplicate. **Fixed** — see §12: the reaper asks the queue
+  which documents still have a job and closes the rest out with a reason.
 - The deployment runs a single worker; multi-worker claim semantics have not been
   exercised.
 - The M2/M4 "compiler" idea (a context compiler benchmarked against naive top-k)
@@ -353,3 +354,51 @@ recalled from the product they describe.
   `web` is a one-shot dist copier (`Exited (0)` is normal).
 - Bundle `index-BBm214qI.js`; `/chat` echoes `userAt` and `message.at`, and the
   history endpoint returns the same two stamps.
+
+## 12. Reliability: a document can no longer sit in `extracting` for ever
+
+The failure this closes: a worker that dies between writing `status =
+'extracting'` and the final write leaves a document row nothing will ever touch
+again. The queue retries its own job or gives up, but nothing revisits the
+document — so it reads "extracting" permanently, and re-uploading the same bytes
+is rejected as a duplicate by the `(orgId, sha256)` unique index.
+
+**The queue is the source of truth, not a timer.** A document is abandoned only
+when no job for it is in `created`, `retry` or `active` state:
+
+```sql
+select distinct data->>'documentId' as id from boss.job
+ where state in ('created','retry','active')
+```
+
+That matters for more than one worker: a wall-clock heuristic would fail a
+document another worker is merely busy with, and a heartbeat column would only
+have told us the same thing the queue already knows. pg-boss keeps completed and
+failed jobs for a week (`deletion_seconds`), which is why only those three states
+count.
+
+- `packages/db/src/documents.ts`: `listExtractingDocuments(db, olderThanMs)` and
+  `failStuckDocuments(db, ids, reason)`. The update is guarded by
+  `status = 'extracting'` in the `WHERE`, so a document that got indexed between
+  the read and the write is never turned into a failure.
+- `apps/worker/src/index.ts`: `reconcileStuckExtractions(db)` runs once at
+  startup and then every 60 s on an unref'd timer; the decision itself
+  (`orphanedExtractions`) is pure and unit-tested. It closes the row as `failed`
+  with *"the worker stopped while this file was being read — choose Reprocess to
+  index it again"* rather than re-queueing: a file that kills its worker would
+  otherwise loop for ever, and Reprocess is one click.
+- A 60-second grace window covers the instant between the status write and the
+  job showing up as active; a missing `boss` schema is treated as "nothing is
+  live" rather than an error, because it just means nothing was ever enqueued.
+
+Tests: `packages/db/src/documents-reaper.test.ts` (4) proves the stale row is
+found, is closed out with its reason and `extractedAt`, that a just-started
+extraction and a queued document are left alone, and that an indexed document is
+never overwritten; `apps/worker/src/index.test.ts` (3 more) covers the decision
+with every candidate live, one live, and none.
+
+**Multi-worker claim semantics** are pg-boss's, not ours: a job is claimed by one
+worker at a time (`FOR UPDATE SKIP LOCKED` under the hood), and the reaper reads
+the same queue state rather than guessing, so N workers and one worker behave the
+same way. What is still unexercised in production is running more than one worker
+replica — the deployment runs one.

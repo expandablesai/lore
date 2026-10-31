@@ -1,5 +1,6 @@
 import { PgBoss } from "pg-boss";
 import { readFile } from "node:fs/promises";
+import { sql } from "drizzle-orm";
 import { createDb, type Db, type RevealedKey } from "@lore/db";
 import {
   dominantEmbeddingModel,
@@ -11,6 +12,8 @@ import {
   orderEmbedKeys,
   pickVisionKey,
   revealActiveLlmKeys,
+  listExtractingDocuments,
+  failStuckDocuments,
   JOB_DOCUMENT_INGEST,
   JOB_DOCUMENT_REPROCESS,
   type DocumentIngestPayload,
@@ -290,6 +293,84 @@ async function runJob(
   }
 }
 
+/**
+ * How long an extraction may sit untouched before it counts as abandoned.
+ *
+ * The window only has to cover the instant between writing `extracting` and the
+ * job being visible as active in the queue, which is milliseconds; a minute is
+ * all margin. Longer would leave a genuinely stuck document reading
+ * "extracting" for no reason.
+ */
+export const STUCK_GRACE_MS = 60_000;
+
+/** What a reader is told when their file was abandoned mid-extraction. */
+export const STUCK_REASON =
+  "the worker stopped while this file was being read — choose Reprocess to index it again";
+
+/** How often the reaper looks for abandoned extractions. */
+export const REAP_INTERVAL_MS = 60_000;
+
+/**
+ * Which `extracting` documents have nothing working on them.
+ *
+ * The queue is the source of truth: a document is only abandoned when no job
+ * for it is queued, waiting to retry, or running. Anything else would fail a
+ * document that another worker is merely busy with.
+ */
+export function orphanedExtractions(
+  candidates: readonly { id: string }[],
+  liveDocumentIds: ReadonlySet<string>,
+): string[] {
+  return candidates.filter((doc) => !liveDocumentIds.has(doc.id)).map((doc) => doc.id);
+}
+
+/**
+ * Document ids that still have a job in the queue.
+ *
+ * pg-boss keeps completed and failed jobs for a week (`deletion_seconds`), so
+ * only `created`, `retry` and `active` count as someone still working. A missing
+ * queue schema is not an error here — it means no job has ever been enqueued, so
+ * nothing is live.
+ */
+async function liveDocumentJobs(db: ReturnType<typeof createDb>): Promise<Set<string>> {
+  const schema = process.env["BOSS_SCHEMA"] ?? "boss";
+  if (!/^[a-z_][a-z0-9_]*$/.test(schema)) {
+    throw new Error(`BOSS_SCHEMA "${schema}" is not a plain identifier`);
+  }
+  try {
+    const rows = (await db.execute(
+      sql.raw(
+        `select distinct data->>'documentId' as id from ${schema}.job where state in ('created','retry','active')`,
+      ),
+    )) as unknown as { id: string | null }[];
+    return new Set(rows.map((row) => row.id).filter((id): id is string => id !== null));
+  } catch (error) {
+    // 42P01: the queue has never been created in this database.
+    if ((error as { code?: string }).code === "42P01") return new Set();
+    throw error;
+  }
+}
+
+/**
+ * Close out documents a dead worker left in `extracting`.
+ *
+ * Run once at startup and then on a timer, because a document that is abandoned
+ * while the worker is healthy is just as stuck as one abandoned by a crash.
+ * Failures here must never take the worker down: the reaper is a safety net.
+ */
+export async function reconcileStuckExtractions(db: ReturnType<typeof createDb>): Promise<number> {
+  const candidates = await listExtractingDocuments(db, STUCK_GRACE_MS);
+  if (candidates.length === 0) return 0;
+  const live = await liveDocumentJobs(db);
+  const abandoned = orphanedExtractions(candidates, live);
+  if (abandoned.length === 0) return 0;
+  const failed = await failStuckDocuments(db, abandoned, STUCK_REASON);
+  if (failed.length > 0) {
+    console.warn(`reconciled ${failed.length} abandoned extraction(s): ${failed.join(", ")}`);
+  }
+  return failed.length;
+}
+
 export async function startWorker(): Promise<PgBoss> {
   const databaseUrl = process.env["DATABASE_URL"];
   if (!databaseUrl) {
@@ -332,6 +413,24 @@ export async function startWorker(): Promise<PgBoss> {
   });
 
   console.log("worker registered job handlers: document.ingest, document.reprocess");
+
+  // Safety net for the row a crash leaves behind. The queue retries its own
+  // jobs, but nothing revisits the document, which would read "extracting"
+  // forever and make a re-upload look like a duplicate.
+  const reap = () => {
+    void reconcileStuckExtractions(db)
+      .then((count) => {
+        if (count > 0) console.log(`reaper: closed ${count} abandoned extraction(s)`);
+      })
+      .catch((error: unknown) => {
+        console.error("reaper failed:", error instanceof Error ? error.message : error);
+      });
+  };
+  reap();
+  const reaper = setInterval(reap, REAP_INTERVAL_MS);
+  // Never hold the process open just for the timer.
+  reaper.unref();
+
   return boss;
 }
 

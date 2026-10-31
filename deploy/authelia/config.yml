@@ -1,0 +1,58 @@
+theme: dark
+
+jwt_secret: ${AUTHELIA_JWT_SECRET}
+encryption_key: ${AUTHELIA_ENCRYPTION_KEY}
+
+log:
+  level: info
+
+server:
+  listen: tcp://0.0.0.0:9091
+
+storage:
+  local:
+    path: /config/db.sqlite3
+
+authentication_backend:
+  password_reset:
+    disable: true
+  refresh_interval: 1m
+  file:
+    path: /config/users_database.yml
+    password:
+      algorithm: pbkdf2
+      pbkdf2:
+        variant: sha256
+        iterations: 100000
+        key_length: 32
+        salt_length: 16
+
+access_control:
+  default_policy: deny
+  rules:
+    - domain: "lore.dushyant.com"
+      policy: one_factor
+
+session:
+  name: authelia_session
+  secret: ${AUTHELIA_SESSION_SECRET}
+  expiration: 1h
+  inactivity: 5m
+  remember_me_duration: 1M
+  cookies:
+    - domain: "dushyant.com"
+      authelia_url: "https://lore.dushyant.com"
+
+regulation:
+  max_retries: 3
+  find_time: 2m
+  ban_time: 5m
+
+storage_encryption:
+  keys: ${AUTHELIA_STORAGE_ENCRYPTION_KEY}
+  current_key: ${AUTHELIA_STORAGE_ENCRYPTION_KEY}
+
+notifier:
+  disable_startup_check: true
+  filesystem:
+    filename: /config/notification.txt

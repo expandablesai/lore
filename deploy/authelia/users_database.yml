@@ -1,0 +1,9 @@
+users:
+  dushyant:
+    disabled: false
+    displayname: "Dushyant"
+    password: "${AUTHELIA_USER_PASSWORD_HASH}"
+    email: dushyant@dushyant.com
+    groups:
+      - admins
+      - lore

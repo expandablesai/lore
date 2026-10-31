@@ -1,10 +1,18 @@
 :80
 
-handle_path /api/* {
+handle /api/* {
+	forward_auth authelia:9091 {
+		uri /api/verify?rd=https://lore.dushyant.com
+		copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
+	}
 	reverse_proxy app:3001
 }
 
 handle {
+	forward_auth authelia:9091 {
+		uri /api/verify?rd=https://lore.dushyant.com
+		copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
+	}
 	root * /srv
 	try_files {path} /index.html
 	file_server

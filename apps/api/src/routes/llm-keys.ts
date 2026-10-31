@@ -9,7 +9,7 @@ import {
   type Db,
 } from "@lore/db";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
-import { createAnthropicAdapter, createOpenAIAdapter, listModels } from "@lore/proxy";
+import { createAnthropicAdapter, createOpenAIAdapter, createOpenAIEmbedder, listModels } from "@lore/proxy";
 import type { AuthenticatedUser } from "../plugins/auth-guard.ts";
 
 /**
@@ -152,6 +152,8 @@ export const createLlmKeyRoutes: (db: Db) => FastifyPluginAsyncZod = (db) => asy
       }
       const key = await revealLlmKey(db, request.params.keyId);
       if (!key) return reply.code(404).send({ error: "not found" });
+
+      let chatError: string | null = null;
       try {
         const adapter =
           key.apiType === "anthropic"
@@ -161,12 +163,43 @@ export const createLlmKeyRoutes: (db: Db) => FastifyPluginAsyncZod = (db) => asy
           model: key.chatModel,
           messages: [{ role: "user", content: "ping" }],
         });
-        return { ok: true, model: res.model, reply: res.choices[0]?.message.content ?? "" };
+        return {
+          ok: true,
+          mode: "chat" as const,
+          model: res.model,
+          reply: res.choices[0]?.message.content ?? "",
+        };
       } catch (e) {
-        return reply
-          .code(502)
-          .send({ ok: false, error: e instanceof Error ? e.message : "upstream failed" });
+        chatError = e instanceof Error ? e.message : "upstream failed";
       }
+
+      /*
+       * A key does not have to be able to chat. An Ollama host configured with
+       * an embedding model answers /v1/embeddings happily and rejects
+       * /chat/completions with "does not support chat" — reporting that as a
+       * failure hides the fact that the key is working exactly as configured.
+       * So test what the key is actually for and say which one answered.
+       */
+      if (key.embedModel.trim() !== "" && key.apiType !== "anthropic") {
+        try {
+          const vectors = await createOpenAIEmbedder({
+            apiKey: key.apiKey,
+            baseUrl: key.baseUrl,
+          }).embed("ping", key.embedModel);
+          const dim = vectors[0]?.length ?? 0;
+          return {
+            ok: true,
+            mode: "embedding" as const,
+            model: key.embedModel,
+            reply: `embedding only — ${dim} dimensions`,
+            note: `chat model "${key.chatModel}" was refused: ${chatError}`,
+          };
+        } catch {
+          // fall through to the chat error, which explains more
+        }
+      }
+
+      return reply.code(502).send({ ok: false, error: chatError ?? "upstream failed" });
     },
   );
 

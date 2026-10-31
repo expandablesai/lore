@@ -184,85 +184,78 @@ body {
   isolation: isolate;
 }
 
-[data-neon="on"] .neon-frame::after {
+/*
+ * The light lives *under* the pane: a wide conic gradient, heavily blurred,
+ * anchored along the bottom edge so it bleeds out from beneath the shadow like
+ * backlighting. No ring, no border — the surface itself stays untouched and the
+ * colour reads as light in the room.
+ */
+[data-neon="on"] .neon-frame::before {
   content: "";
   position: absolute;
-  inset: -1.5px;
-  border-radius: inherit;
-  padding: 1.5px;
+  inset: 22% -3% -16% -3%;
+  z-index: -1;
+  border-radius: 48px;
   pointer-events: none;
   background: conic-gradient(
-    from 0deg,
+    from 140deg at 40% 85%,
     #ff2d55,
     #ff9f0a,
+    #ffd60a,
     #32d74b,
     #64d2ff,
     #5e5ce6,
     #bf5af2,
     #ff2d55
   );
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  animation: neon-cycle 7s linear infinite;
-  filter: drop-shadow(0 0 6px rgba(100, 210, 255, 0.55));
+  filter: blur(48px) saturate(185%);
+  opacity: 0.62;
+  animation: neon-drift 15s ease-in-out infinite alternate;
 }
 
-[data-neon="on"] .neon-frame::before {
-  content: "";
-  position: absolute;
-  inset: -6px;
-  border-radius: inherit;
-  pointer-events: none;
-  z-index: -1;
-  background: conic-gradient(
-    from 90deg,
-    rgba(255, 45, 85, 0.35),
-    rgba(255, 159, 10, 0.3),
-    rgba(50, 215, 75, 0.3),
-    rgba(100, 210, 255, 0.35),
-    rgba(94, 92, 230, 0.35),
-    rgba(191, 90, 242, 0.32),
-    rgba(255, 45, 85, 0.35)
-  );
-  filter: blur(16px) saturate(140%);
-  opacity: 0.7;
-  animation: neon-cycle 9s linear infinite reverse;
-}
-
+/* Day mode: light on paper, so wider and softer rather than dimmer. */
 [data-theme="light"][data-neon="on"] .neon-frame::before {
-  opacity: 0.45;
-  filter: blur(20px) saturate(120%);
+  opacity: 0.5;
+  filter: blur(58px) saturate(150%);
+  inset: 26% -4% -18% -4%;
 }
 
-/* Controls pick up the glow too, so the light reads as part of the material. */
+/* Controls glow rather than outline, so the material stays uniform. */
 [data-neon="on"] .neon-glow {
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.06),
-    0 8px 30px -10px rgba(94, 92, 230, 0.55),
-    0 0 24px -6px rgba(100, 210, 255, 0.45);
-  animation: neon-cycle 8s linear infinite;
+    0 10px 26px -12px rgba(94, 92, 230, 0.55),
+    0 0 26px -10px rgba(100, 210, 255, 0.65);
+  animation: neon-hue 9s linear infinite;
 }
 
 [data-neon="on"] .bubble-user {
   box-shadow:
-    0 10px 30px -12px rgba(255, 45, 85, 0.45),
-    0 0 22px -8px rgba(100, 210, 255, 0.5);
+    0 12px 32px -14px rgba(255, 45, 85, 0.5),
+    0 0 24px -10px rgba(100, 210, 255, 0.55);
 }
 
-@keyframes neon-cycle {
+@keyframes neon-drift {
+  0% {
+    transform: translate3d(-2%, 1%, 0) scale(0.98);
+    filter: blur(48px) saturate(185%) hue-rotate(0deg);
+  }
+  50% {
+    transform: translate3d(1%, 2%, 0) scale(1.02);
+    filter: blur(52px) saturate(195%) hue-rotate(-35deg);
+  }
+  100% {
+    transform: translate3d(2%, -1%, 0) scale(1.03);
+    filter: blur(50px) saturate(190%) hue-rotate(45deg);
+  }
+}
+
+@keyframes neon-hue {
   to {
-    filter: hue-rotate(360deg) drop-shadow(0 0 6px rgba(100, 210, 255, 0.55));
+    filter: hue-rotate(360deg);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-neon="on"] .neon-frame::after,
   [data-neon="on"] .neon-frame::before,
   [data-neon="on"] .neon-glow {
     animation: none;

@@ -50,7 +50,7 @@ export function LlmKeys({ token, user }: ViewProps) {
   const [adding, setAdding] = useState(false);
 
   const [testing, setTesting] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState<{ id: string; ok: boolean; text: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ id: string; ok: boolean; text: string; note?: string } | null>(null);
   const [models, setModels] = useState<{ id: string; list: string[] } | null>(null);
 
   const load = useCallback(() => {
@@ -127,7 +127,13 @@ export function LlmKeys({ token, user }: ViewProps) {
     setTestResult(null);
     try {
       const res = await api.testLlmKey(token, orgId, keyId);
-      setTestResult({ id: keyId, ok: true, text: `${res.model}: ${res.reply}` });
+      // A key can be embedding-only; say which capability answered instead of
+      // reporting a chat failure for a key that is working as configured.
+      const text =
+        res.mode === "embedding"
+          ? `${res.model}: ${res.reply}`
+          : `${res.model}: ${res.reply}`;
+      setTestResult({ id: keyId, ok: true, text, note: res.note });
     } catch (e) {
       setTestResult({ id: keyId, ok: false, text: errMessage(e) });
     } finally {
@@ -214,9 +220,14 @@ export function LlmKeys({ token, user }: ViewProps) {
                     {k.visionModel ? `vision: ${k.visionModel}` : "no vision model"} · {k.createdAt}
                   </p>
                   {testResult && testResult.id === k.id && (
-                    <p className={"mt-1 text-xs " + (testResult.ok ? "text-emerald-300" : "text-rose-300")}>
-                      {testResult.text}
-                    </p>
+                    <>
+                      <p className={"mt-1 text-xs " + (testResult.ok ? "text-emerald-300" : "text-rose-300")}>
+                        {testResult.text}
+                      </p>
+                      {testResult.note && (
+                        <p className="mt-0.5 text-xs text-slate-500">{testResult.note}</p>
+                      )}
+                    </>
                   )}
                   {models && models.id === k.id && (
                     <p className="mt-1 text-xs text-slate-400">

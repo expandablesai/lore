@@ -108,6 +108,46 @@ describe("M4 llm-keys: apiType dispatch, anthropic test + chat-only", () => {
     expect(r.statusCode).toBe(404);
   });
 
+  test("an embedding-only key reports as an embedding test, not a failure", async () => {
+    // Ollama configured with an embedding model answers /v1/embeddings and
+    // rejects /chat/completions; that is a working key, not a broken one.
+    const created = await app.inject({
+      method: "POST", url: `/orgs/${orgId}/llm-keys`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        label: "m4-embed-only", apiKey: "ollama-local", provider: "ollama",
+        baseUrl: "http://ollama.test/v1", chatModel: "nomic-embed-text",
+        embedModel: "nomic-embed-text", embedDim: 768,
+      },
+    });
+    const keyId = (created.json() as { id: string }).id;
+
+    const fetchMock = vi.fn(async (url: string, _init: RequestInit) => {
+      if (String(url).endsWith("/chat/completions")) {
+        return new Response(
+          JSON.stringify({ error: { message: '"nomic-embed-text" does not support chat', type: "invalid_request_error" } }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ data: [{ embedding: Array(768).fill(0.01) }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const r = await app.inject({
+      method: "POST", url: `/orgs/${orgId}/llm-keys/${keyId}/test`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(r.statusCode).toBe(200);
+    const body = r.json() as { ok: boolean; mode: string; model: string; reply: string; note?: string };
+    expect(body.ok).toBe(true);
+    expect(body.mode).toBe("embedding");
+    expect(body.model).toBe("nomic-embed-text");
+    expect(body.reply).toMatch(/768/);
+    expect(body.note).toMatch(/does not support chat/);
+  });
   test("POST .../models lists the model ids the provider advertises", async () => {
     const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
       new Response(JSON.stringify({ data: [{ id: "strata-iq3-256" }, { id: "qwen2.5-vl-7b" }] }), {

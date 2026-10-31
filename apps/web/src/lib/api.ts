@@ -278,7 +278,10 @@ export const api = {
     request<{ ok: boolean }>(`/orgs/${orgId}/llm-keys/${keyId}/revoke`, { method: "POST", token }),
 
   testLlmKey: (token: string, orgId: string, keyId: string) =>
-    request<{ ok: boolean; model: string; reply: string }>(`/orgs/${orgId}/llm-keys/${keyId}/test`, { method: "POST", token }),
+    request<{ ok: boolean; mode?: "chat" | "embedding"; model: string; reply: string; note?: string }>(
+      `/orgs/${orgId}/llm-keys/${keyId}/test`,
+      { method: "POST", token },
+    ),
 
   llmKeyModels: (token: string, orgId: string, keyId: string) =>
     request<{ ok: boolean; models: string[] }>(`/orgs/${orgId}/llm-keys/${keyId}/models`, { method: "POST", token }),

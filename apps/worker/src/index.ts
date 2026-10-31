@@ -3,11 +3,13 @@ import { readFile } from "node:fs/promises";
 import { createDb } from "@lore/db";
 import {
   canEmbedKey,
+  dominantEmbeddingModel,
   updateDocumentStatus,
   insertChunks,
   insertEmbeddings,
   deleteDocumentDerived,
-  revealActiveLlmKey,
+  pickEmbedKey,
+  revealActiveLlmKeys,
   JOB_DOCUMENT_INGEST,
   JOB_DOCUMENT_REPROCESS,
   type DocumentIngestPayload,
@@ -58,7 +60,9 @@ async function ingestDocument(
     }));
     await insertChunks(db, chunkRows);
 
-    // Embed chunks: real vectors when the key can embed, else deterministic hash
+    // Embed chunks: real vectors when the key can embed, else deterministic hash.
+    // The key is chosen to match the model the org's existing vectors came from,
+    // so a new document lands in the same space as the ones already indexed.
     const embeddingRows: Array<{
       entityType: string;
       entityId: string;
@@ -71,7 +75,9 @@ async function ingestDocument(
     const { getDocumentChunks } = await import("@lore/db");
     const storedChunks = await getDocumentChunks(db, documentId);
 
-    const key = await revealActiveLlmKey(db, orgId);
+    const keys = await revealActiveLlmKeys(db, orgId);
+    const storedModel = await dominantEmbeddingModel(db, orgId);
+    const key = pickEmbedKey(keys, storedModel);
     if (key && canEmbedKey(key)) {
       const embedder = createOpenAIEmbedder({ apiKey: key.apiKey, baseUrl: key.baseUrl });
       const vecs = await embedder.embed(storedChunks.map((c) => c.text), key.embedModel);

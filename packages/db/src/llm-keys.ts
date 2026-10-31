@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { orgLlmKeys } from "./schema.js";
 import { decryptSecret, encryptSecret } from "./crypto.js";
 import type { Db } from "./client.js";
@@ -72,7 +72,8 @@ export function listLlmKeys(db: Db, orgId: string) {
       createdAt: orgLlmKeys.createdAt,
     })
     .from(orgLlmKeys)
-    .where(and(eq(orgLlmKeys.orgId, orgId), isNull(orgLlmKeys.revokedAt)));
+    .where(and(eq(orgLlmKeys.orgId, orgId), isNull(orgLlmKeys.revokedAt)))
+    .orderBy(desc(orgLlmKeys.createdAt), desc(orgLlmKeys.id));
 }
 
 export function revokeLlmKey(db: Db, orgId: string, id: string) {
@@ -109,8 +110,15 @@ export async function revealLlmKey(db: Db, id: string): Promise<RevealedKey | nu
   };
 }
 
-/** Decrypt an org's active key for a background worker; null when the org has none. */
-export async function revealActiveLlmKey(db: Db, orgId: string): Promise<RevealedKey | null> {
+/**
+ * Decrypt every active key for an org, newest first.
+ *
+ * Order matters: adding a key is how an admin rotates providers, so "the key
+ * I just added" is the expected default. Callers that need a *specific* model
+ * (retrieval must reuse the embedding model the chunks were indexed with) look
+ * it up through pickEmbedKey instead of taking the head of the list.
+ */
+export async function revealActiveLlmKeys(db: Db, orgId: string): Promise<RevealedKey[]> {
   const rows = await db
     .select({
       cipher: orgLlmKeys.cipher,
@@ -122,17 +130,42 @@ export async function revealActiveLlmKey(db: Db, orgId: string): Promise<Reveale
     })
     .from(orgLlmKeys)
     .where(and(eq(orgLlmKeys.orgId, orgId), isNull(orgLlmKeys.revokedAt)))
-    .limit(1);
-  const row = rows[0];
-  if (!row) return null;
-  return {
+    .orderBy(desc(orgLlmKeys.createdAt), desc(orgLlmKeys.id));
+  return rows.map((row) => ({
     apiKey: decryptSecret(row.cipher),
     apiType: row.apiType,
     baseUrl: row.baseUrl,
     chatModel: row.chatModel,
     embedModel: row.embedModel,
     embedDim: row.embedDim,
-  };
+  }));
+}
+
+/** Decrypt an org's newest active key; null when the org has none. */
+export async function revealActiveLlmKey(db: Db, orgId: string): Promise<RevealedKey | null> {
+  const keys = await revealActiveLlmKeys(db, orgId);
+  return keys[0] ?? null;
+}
+
+/** The key that answers chat: the newest active key, whatever its models. */
+export function pickChatKey(keys: RevealedKey[]): RevealedKey | null {
+  return keys[0] ?? null;
+}
+
+/**
+ * The key that turns text into vectors.
+ *
+ * Vectors from different embedding models are not comparable, so when an org
+ * already holds vectors produced by `storedModel`, that model wins: retrieval
+ * re-embeds the query in the same space instead of drifting into another one.
+ * With no stored vectors yet, fall back to the newest key that can embed.
+ */
+export function pickEmbedKey(keys: RevealedKey[], storedModel: string | null): RevealedKey | null {
+  if (storedModel) {
+    const match = keys.find((key) => canEmbedKey(key) && key.embedModel === storedModel);
+    return match ?? null;
+  }
+  return keys.find((key) => canEmbedKey(key)) ?? null;
 }
 
 /** Whether a revealed key can produce real embeddings (chat-only providers cannot). */

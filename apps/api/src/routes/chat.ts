@@ -3,19 +3,29 @@ import { and, eq, sql } from "drizzle-orm";
 import {
   canEmbedKey,
   chunks,
+  dominantEmbeddingModel,
   embeddings,
-  revealActiveLlmKey,
+  pickChatKey,
+  pickEmbedKey,
+  revealActiveLlmKeys,
   type Db,
+  type RevealedKey,
   withRls,
 } from "@lore/db";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { createAnthropicAdapter, createOpenAIAdapter, createOpenAIEmbedder } from "@lore/proxy";
-import { deterministicEmbed, EMBEDDING_DIM, HASH_DIM, vectorToPgText, zeroPad } from "@lore/core";
+import { deterministicEmbed, EMBEDDING_DIM, HASH_DIM, HASH_MODEL, vectorToPgText, zeroPad } from "@lore/core";
 
 /**
  * In-app chat — retrieves the caller's org memories by cosine similarity over
  * chunk embeddings, grounds a system prompt with them, and calls the org's
- * OpenAI key. Requires an active per-org LLM key.
+ * chat key.
+ *
+ * Chat and embedding may be served by different keys (a hosted chat model plus
+ * a local embedder is the common split), so the two are picked separately. The
+ * query is embedded with the model the stored chunks were indexed with —
+ * vectors from different models are not comparable, and mixing them turns the
+ * recall into noise while still "working".
  */
 const chatBody = z.object({
   messages: z
@@ -28,6 +38,22 @@ const chatBody = z.object({
     .min(1)
     .max(50),
 });
+
+/** Embed the question in the stored chunks' vector space. */
+async function queryVectorFor(
+  key: RevealedKey | null,
+  question: string,
+): Promise<{ vec: Float32Array; model: string }> {
+  if (key && canEmbedKey(key)) {
+    const embedded = await createOpenAIEmbedder({ apiKey: key.apiKey, baseUrl: key.baseUrl }).embed(
+      question,
+      key.embedModel,
+    );
+    const first = embedded[0];
+    if (first) return { vec: first, model: key.embedModel };
+  }
+  return { vec: deterministicEmbed(question, HASH_DIM), model: HASH_MODEL };
+}
 
 export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
   (db) => async (app) => {
@@ -45,20 +71,19 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
         const { messages } = request.body;
         const question = messages[messages.length - 1]?.content ?? "";
 
-        const key = await revealActiveLlmKey(db, user.orgId);
-        if (!key) {
+        const keys = await revealActiveLlmKeys(db, user.orgId);
+        const chatKey = pickChatKey(keys);
+        if (!chatKey) {
           return reply
             .code(502)
             .send({ error: "no active LLM key for this org" });
         }
 
-        const canEmbed = canEmbedKey(key);
-        const queryVector = canEmbed
-          ? ((await createOpenAIEmbedder({ apiKey: key.apiKey, baseUrl: key.baseUrl }).embed(
-              question,
-              key.embedModel,
-            ))[0] ?? new Float32Array(EMBEDDING_DIM))
-          : deterministicEmbed(question, HASH_DIM);
+        const storedModel = await dominantEmbeddingModel(db, user.orgId);
+        const { vec: queryVector, model } = await queryVectorFor(
+          pickEmbedKey(keys, storedModel),
+          question,
+        );
         const rows = await withRls(db, user.orgId, user.id, async (tx) =>
           tx
             .select({ text: chunks.text })
@@ -67,6 +92,7 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
             .where(
               and(
                 eq(embeddings.entityType, "chunk"),
+                eq(embeddings.model, model),
                 eq(chunks.orgId, user.orgId),
               ),
             )
@@ -78,11 +104,11 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
         const memory = rows.map((r) => r.text).join("\n\n");
 
         const adapter =
-          key.apiType === "anthropic"
-            ? createAnthropicAdapter({ apiKey: key.apiKey, baseUrl: key.baseUrl })
-            : createOpenAIAdapter({ apiKey: key.apiKey, baseUrl: key.baseUrl });
+          chatKey.apiType === "anthropic"
+            ? createAnthropicAdapter({ apiKey: chatKey.apiKey, baseUrl: chatKey.baseUrl })
+            : createOpenAIAdapter({ apiKey: chatKey.apiKey, baseUrl: chatKey.baseUrl });
         const res = await adapter.chatCompletions({
-          model: key.chatModel,
+          model: chatKey.chatModel,
           messages: [
             {
               role: "system",

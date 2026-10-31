@@ -108,6 +108,21 @@ docker compose -f deploy/compose/docker-compose.yml up -d --force-recreate app w
 
 Do **not** re-run `db:apply-rls` for an incremental migration.
 
+### Redeploying the console bundle only
+
+`app`, `worker` and `web` share one image tag, and Compose builds that image
+once — `build web` on its own prints `No services to build` and leaves the
+image (and so the `apps/web/dist` that `web` copies) untouched. Build the
+service that owns the context, then re-run the one-shot copier:
+
+```bash
+git fetch && git reset --hard origin/master
+docker compose -f deploy/compose/docker-compose.yml build app
+docker compose -f deploy/compose/docker-compose.yml up -d --force-recreate web
+# caddy mounts the web_dist volume at /srv; the hash must match dist/index.html
+docker compose -f deploy/compose/docker-compose.yml exec -T caddy ls /srv/assets
+```
+
 ## 6. Start the app stack
 
 ```bash

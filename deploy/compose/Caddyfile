@@ -21,6 +21,10 @@
 			forward_auth authelia:9091 {
 				uri /api/verify
 				header_up X-Forwarded-Proto https
+				# Authelia redirects browsers to the portal but answers 401 to
+				# client code that asks for JSON; /api is only ever called by fetch,
+				# so always ask as JSON.
+				header_up Accept application/json
 				copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
 			}
 			uri strip_prefix /api

@@ -97,10 +97,14 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # A single-file bind mount follows the inode: replacing the file on the
+      # host (git checkout, editor save-and-rename) leaves the container reading
+      # the old copy. Mount the directory instead so edits are always visible.
+      - ./:/caddy-config:ro
       - web_dist:/srv:ro
       - caddy_data:/data
       - caddy_config:/config
+    command: ["caddy", "run", "--config", "/caddy-config/Caddyfile", "--adapter", "caddyfile"]
     depends_on:
       web:
         condition: service_completed_successfully

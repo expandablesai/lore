@@ -34,6 +34,28 @@ describe("openai adapter", () => {
     expect(init?.method).toBe("POST");
     const headers = init?.headers as Record<string, string>;
     expect(headers["authorization"]).toBe("Bearer sk-test");
+    // A budget is always sent: a provider default that is too small makes a
+    // thinking model answer with an empty content field.
+    const payload = JSON.parse(String(init?.body)) as { max_tokens?: number };
+    expect(payload.max_tokens).toBe(1024);
+  });
+
+  it("honours an explicit max_tokens", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      new Response(JSON.stringify({ id: "c2", model: "gpt-4o-mini", choices: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const adapter = createOpenAIAdapter({ apiKey: "sk-test" });
+    await adapter.chatCompletions({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: "hello" }],
+      max_tokens: 64,
+    });
+    const payload = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as { max_tokens?: number };
+    expect(payload.max_tokens).toBe(64);
   });
 
   it("throws with the upstream status on a non-2xx response", async () => {

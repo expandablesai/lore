@@ -9,6 +9,15 @@
 export interface ChatCompletionsRequest {
   readonly model: string;
   readonly messages: readonly ChatMessage[];
+  /**
+   * Upper bound on the answer tokens.
+   *
+   * Always sent, because the default is provider-specific and some gateways pick
+   * a small one: a "thinking" model then spends the whole budget on its reasoning
+   * and returns an empty `content`, which reads as "the model returned no
+   * answer" for any question with a large context.
+   */
+  readonly max_tokens?: number;
 }
 
 export interface ChatMessage {
@@ -78,6 +87,7 @@ export function createOpenAIAdapter(opts: AdapterOptions): UpstreamAdapter {
       const json = await postJson(`${baseUrl}/chat/completions`, opts.apiKey, {
         model: request.model,
         messages: request.messages,
+        max_tokens: request.max_tokens ?? 1024,
       });
       const data = json as {
         id?: string;

@@ -1,0 +1,20 @@
+# Authelia file-based user database.
+#
+# This file contains a password digest and is therefore NOT tracked in git.
+# The real file lives on the deployment host at /srv/lore/authelia/users_database.yml
+# and is bind-mounted into the container at /config/users_database.yml.
+#
+# Generate it with deploy/authelia/gen-users.sh (or copy this example and replace
+# the password field with a digest from:
+#   docker run --rm authelia/authelia:4 authelia crypto hash generate pbkdf2 \
+#     --password '<password>' --variant sha256 --iterations 100000
+# ).
+users:
+  dushyant:
+    disabled: false
+    displayname: "Dushyant"
+    password: "<pbkdf2-sha256-digest>"
+    email: dushyant@dushyant.com
+    groups:
+      - admins
+      - lore

@@ -4,8 +4,12 @@ The original plan for this system, and everything that has actually been built,
 verified and deployed up to this point. Written to be the single durable record:
 if only one document survives, it should be this one.
 
-Last updated: 2026-10-31 · deployed bundle `index-DLumDUVb.js` · commit `67caeee`
-· VM `10.20.10.52` (`/opt/lore`) · 206 tests green.
+Last updated: 2026-10-31 · deployed bundle `index-DLumDUVb.js` · commit `d3fde22`
+· VM `10.20.10.52` (`/opt/lore`) · 207 tests green.
+
+This document is itself stored in LORE: it was uploaded to the owner org as
+`PROJECT-RECORD.md` (scope `org`), chunked, embedded with `nomic-embed-text` and
+indexed, so the system can recall its own plan.
 
 ---
 
@@ -167,8 +171,8 @@ Everything below is on `master`, deployed, and covered by tests.
 
 ## 4. How it is verified
 
-- `pnpm -r build`, `pnpm -r typecheck`, `pnpm -r test` — currently **206 tests**:
-  api 72, web 59, core 26, worker 20, db 18, proxy 10, mcp 1.
+- `pnpm -r build`, `pnpm -r typecheck`, `pnpm -r test` — currently **207 tests**:
+  api 72, web 59, core 26, worker 20, db 18, proxy 11, mcp 1.
 - Live checks on the VM (`10.20.10.52`) after each deploy: health, upload →
   indexed with the expected scope, chunk count and embedding model, blob
   byte-for-byte round trip, reprocess, recall (lexical + semantic), a real chat
@@ -177,7 +181,7 @@ Everything below is on `master`, deployed, and covered by tests.
 - The edge is checked with SNI: page → 302 to the Authelia portal, `/api/…` →
   401 JSON, assets gated while unauthenticated.
 
-## 5. The journey (58 commits, oldest first)
+## 5. The journey (62 commits, oldest first)
 
 ```
 eb76d40 M0 monorepo with deploy pipeline
@@ -238,6 +242,10 @@ b7fab94 neon as light under the glass, and a Test button that knows what the key
 7881760 paste is the top of Memory, not a sidebar destination
 fb6f21f runbook — the shared image is built by app, not web
 67caeee close the tenant holes, and stop ingestion from losing documents
+c584d5e the project record — original plan and everything built so far
+ee1b32d send a token budget to the chat provider, so a thinking model cannot answer with nothing
+7f997ef log the shape of an empty provider answer
+d3fde22 retry a silent provider once, and name the model that went quiet
 ```
 
 ## 6. Current state
@@ -252,6 +260,9 @@ fb6f21f runbook — the shared image is built by app, not web
   zero-padded into the 3072 column), so recall and chat share one vector space.
 - **Keys**: one chat-capable gateway key (Strata), two Ollama keys
   (`llama3.1` + `nomic-embed-text`), and a DeepSeek key kept disabled.
+- **The record lives in the system**: `PROJECT-RECORD.md` is indexed in the
+  owner org (scope `org`, 10 chunks, 10 vectors, `nomic-embed-text`), so the
+  plan can be recalled from inside LORE.
 
 ## 7. Known gaps / next steps
 
@@ -260,7 +271,15 @@ fb6f21f runbook — the shared image is built by app, not web
   which an API token cannot do.
 - **Image generation** is explicitly out of scope (the model is told it cannot
   draw); it would need a separate image-model provider.
-- Retrieval depth is top-6 chunks with no per-document or per-episode scoping.
+- The configured chat gateway (`qwen3.8-flash-next-unsloth-ud-q4-kxl`) returns an
+  **empty answer for some questions** — reproducibly with and without retrieved
+  context, so it is the model/gateway, not the prompt. LORE now sends a token
+  budget, retries once without the retrieved context, and then names the model
+  that went quiet instead of showing a blank bubble. Switching the chat key to
+  the local Ollama key answers normally.
+- Retrieval depth is top-6 chunks with no per-document or per-episode scoping,
+  so a generic question ("according to the project record…") can rank other
+  documents above the intended one; a distinctive term retrieves correctly.
 - A worker that dies mid-job can leave a document in `extracting` (no heartbeat
   or startup reconciliation yet); re-uploading the same bytes is then treated as
   already present.

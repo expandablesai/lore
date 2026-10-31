@@ -301,3 +301,55 @@ d3fde22 retry a silent provider once, and name the model that went quiet
 - Build the shared image with `build app` (not `build web`), then re-create the
   one-shot `web` container to publish a new bundle; verify `/srv/assets` inside
   Caddy.
+
+## 9. What landed after this record was written
+
+Six changes, in the order they were asked for. Every one is on `origin/master`
+and running on VM `10.20.10.52`.
+
+| Commit | Change | Detail |
+| --- | --- | --- |
+| `1cfbf17` | Interface language, chosen in Profile, defaulting to the browser | `packages/core/src/locales.ts` is the single source of truth (`en`, `hi`, `zh`); the web console resolves **choice → profile → `navigator.languages` → English**, and `users.locale` carries a nullable column with a `locale_enum` check. English strings are the dictionary keys, so an untranslated sentence stays readable instead of blanking. |
+| `567c5d5` | Password change from Profile | `POST /me/password` requires the current password (403), holds the signup floor of 10 characters and refuses a repeat of the same password (400), then revokes **every other session** and audits `user.password`. The screen maps 403 to "Current password is incorrect." |
+| `d7774b4` | Memory that survives a new chat | A turn now carries three blocks into the prompt: confirmed **self facts** (extracted from "my name is…", "call me…", "I live in…", "remember that…", stored as subject `the user` with trust 2 and a source link), **related earlier turns** from other conversations (pg_trgm `similarity > 0.1`, limit 4), and document passages (max 2 per document, images excluded from text). |
+| `656e76f` | An answer about the reader is text, not pictures | Image documents are attached only when the question asks for them (`WANTS_IMAGE`), so "what is my name?" stopped returning three character-sheet images. |
+| `446128c` | The console owns the viewport | `h-screen` + `overflow-hidden` on the shell, one `min-h-0 flex-1 overflow-y-auto` region for the content column: a growing chat moves the transcript, never the header or the sidebar. |
+| `92fecd9` | Every message says when it was said, and copies in one click | `appendMessage` returns the stored row's `createdAt`; `/chat` echoes `userAt` and `message.at`, so a live turn and a reloaded one are labelled identically. The label is `Intl` date + time joined by a translated `"{date} at {time}"`; the copy control uses the async clipboard with a selection fallback. |
+
+Two corrections came with them:
+
+- **Spanish was removed**, not merely hidden: `0011_new_salo.sql` drops and
+  re-adds the `locale_enum` check without `es`, and `PATCH /me {"locale":"es"}`
+  now answers 400 `language must be one of en, hi, zh or null`.
+- **The self-promotion hole** (`PATCH /orgs/:id/users/:userId` granting
+  `superadmin`) and the cross-org writes beside it are closed and covered by
+  `m7`.
+
+## 10. The lock: design system and feature surface (2026-11-01)
+
+At the owner's request the console's look and the shipped feature set are frozen
+until explicitly unlocked. It is enforced, not remembered:
+
+| Artifact | Role |
+| --- | --- |
+| `docs/LOCKED-DESIGN.md` | The frozen design: liquid-glass material, both palettes token by token, the seven primitives, type, the three motion gestures, the layout contract, the neon layer, and the list of what counts as a design change |
+| `docs/LOCKED-FEATURES.md` | 30 feature rows, each stating the promise to the reader and the test that proves it |
+| `lore.lock.json` | The machine copy: SHA-256 (LF-normalised) of the four design files, the 24 API routes, the 12 views, the locale set, the embedding model, and every migration |
+| `scripts/lock.mjs` | `pnpm lock:check` — exits non-zero on any drift, naming each one |
+
+`pnpm test` runs the lock check first, so the whole suite fails on drift instead
+of waiting for CI. Sanctioned changes are recorded with
+`node scripts/lock.mjs update --reason "why"`, which appends to the lock's
+changelog; a lock update without the code change, or the reverse, is a mistake.
+
+The three documents are also **inside LORE itself** (org-scoped documents,
+chunked and embedded with `nomic-embed-text`), so the record and the lock can be
+recalled from the product they describe.
+
+## 11. Test and deployment state at the freeze
+
+- **249 tests green**: web 76, api 90, core 33, db 18, worker 20, proxy 11, mcp 1.
+- Live on `10.20.10.52`: `app`, `worker`, `db`, `caddy`, `authelia` running;
+  `web` is a one-shot dist copier (`Exited (0)` is normal).
+- Bundle `index-BBm214qI.js`; `/chat` echoes `userAt` and `message.at`, and the
+  history endpoint returns the same two stamps.

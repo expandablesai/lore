@@ -9,7 +9,9 @@
   "scripts": {
     "build": "pnpm -r build",
     "bundle": "node tooling/bundle.mjs",
-    "test": "pnpm -r test",
+    "lock:check": "node scripts/lock.mjs check",
+    "lock:update": "node scripts/lock.mjs update",
+    "test": "node scripts/lock.mjs check && pnpm -r test",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "dev": "pnpm -r --parallel dev",

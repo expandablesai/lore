@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ClipboardEvent, FormEvent, KeyboardEvent } from "react";
 import { api } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 import type { DocumentDetail, DocumentSummary } from "../lib/types";
 import { Button, ErrorNote, Panel, errMessage, type ViewProps } from "./common";
 
@@ -79,6 +80,7 @@ async function settle(
 }
 
 export function Capture({ token, navigate }: ViewProps) {
+  const { t } = useI18n();
   const [text, setText] = useState("");
   const [pending, setPending] = useState<Pending[]>([]);
   const [busy, setBusy] = useState(false);
@@ -237,10 +239,9 @@ export function Capture({ token, navigate }: ViewProps) {
       <div onPaste={onPaste}>
         <Panel>
           <div className="mb-3">
-            <h2 className="text-sm font-medium text-slate-200">Paste</h2>
+            <h2 className="text-sm font-medium text-slate-200">{t("Paste")}</h2>
             <p className="mt-1 text-xs text-slate-400">
-              Paste text or an image, press Enter, and LORE writes it into the workspace — with the
-              date, the metadata and the person who saved it.
+              {t("Paste text or an image, press Enter, and LORE writes it into the workspace — with the date, the metadata and the person who saved it.")}
             </p>
           </div>
           <textarea
@@ -248,8 +249,8 @@ export function Capture({ token, navigate }: ViewProps) {
             onChange={(e) => setText(e.target.value)}
             onKeyDown={onKeyDown}
             rows={8}
-            aria-label="Paste text"
-            placeholder="Paste text here — a note, a transcript, a brief. Enter saves it, Shift+Enter adds a line."
+            aria-label={t("Paste text")}
+            placeholder={t("Paste text here — a note, a transcript, a brief. Enter saves it, Shift+Enter adds a line.")}
             className="w-full resize-y rounded-2xl border border-[rgb(var(--glass-border))] bg-[rgb(var(--glass))] px-4 py-3 text-sm leading-relaxed text-slate-100 placeholder:text-slate-500 focus:border-sky-400/60 focus:outline-none focus:ring-2 focus:ring-sky-400/20"
           />
 
@@ -283,29 +284,28 @@ export function Capture({ token, navigate }: ViewProps) {
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <Button type="button" onClick={() => void submit()} disabled={busy || (text.trim() === "" && pending.length === 0)}>
-              {busy ? "Saving…" : "Save & index"}
+              {busy ? t("Saving…") : t("Save & index")}
             </Button>
             <label className="glass liquid-lift cursor-pointer rounded-full px-4 py-2 text-sm text-slate-200">
-              Attach images
+              {t("Attach images")}
               <input type="file" multiple accept="image/png,image/jpeg,image/webp" onChange={onFiles} className="hidden" />
             </label>
             <span className="text-xs text-slate-500">
               {text.trim() === "" && pending.length === 0
-                ? "Nothing to save yet"
+                ? t("Nothing to save yet")
                 : `${text.trim() === "" ? 0 : 1} note · ${pending.length} image${pending.length === 1 ? "" : "s"}`}
             </span>
           </div>
           {error && <div className="mt-3"><ErrorNote message={error} /></div>}
           <p className="mt-3 text-xs text-slate-500">
-            Saved items appear in Documents with their metadata; indexing usually finishes within a
-            few seconds.
+            {t("Saved items appear in Documents with their metadata; indexing usually finishes within a few seconds.")}
           </p>
         </Panel>
       </div>
 
       {receipts.length > 0 && (
         <Panel>
-          <h2 className="mb-1 text-sm font-medium text-slate-200">Saved</h2>
+          <h2 className="mb-1 text-sm font-medium text-slate-200">{t("Saved")}</h2>
           <p className="mb-3 text-xs text-slate-400">
             {indexed} indexed{failed > 0 ? ` · ${failed} failed` : ""} ·{" "}
             {busy ? "still working…" : "done"}
@@ -325,15 +325,15 @@ export function Capture({ token, navigate }: ViewProps) {
                       </p>
                       <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-slate-400 sm:grid-cols-3">
                         <div>
-                          <dt className="text-slate-500">Saved</dt>
+                          <dt className="text-slate-500">{t("Saved")}</dt>
                           <dd>{when(detail?.createdAt)}</dd>
                         </div>
                         <div>
-                          <dt className="text-slate-500">Indexed</dt>
+                          <dt className="text-slate-500">{t("Indexed")}</dt>
                           <dd>{when(detail?.extractedAt)}</dd>
                         </div>
                         <div>
-                          <dt className="text-slate-500">By</dt>
+                          <dt className="text-slate-500">{t("By")}</dt>
                           <dd>{detail?.uploadedByName ?? "—"}</dd>
                         </div>
                       </dl>
@@ -352,11 +352,11 @@ export function Capture({ token, navigate }: ViewProps) {
                               : "bg-amber-500/15 text-amber-300")
                         }
                       >
-                        {receipt.status}
+                        {t(receipt.status)}
                       </span>
                       {receipt.id && (
                         <Button variant="ghost" onClick={() => navigate(`/documents/${receipt.id}`)}>
-                          Open
+                          {t("Open")}
                         </Button>
                       )}
                     </div>

@@ -4,9 +4,11 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { useI18n } from "../lib/i18n";
 import { Button, ErrorNote, Field, Panel } from "./common";
 
 export function Login() {
+  const { t } = useI18n();
   const { login, signup } = useAuth();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
@@ -42,16 +44,16 @@ export function Login() {
       <Panel>
         <form className="space-y-4" onSubmit={onSubmit}>
           <h2 className="text-lg font-medium text-slate-100">
-            {mode === "login" ? "Sign in" : "Create your workspace"}
+            {mode === "login" ? t("Sign in") : t("Create your workspace")}
           </h2>
 
           {mode === "signup" && (
             <>
-              <Field label="Display name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} autoComplete="name" />
-              <Field label="Organization" value={orgName} onChange={(e) => setOrgName(e.target.value)} autoComplete="organization" />
+              <Field label={t("Display name")} value={displayName} onChange={(e) => setDisplayName(e.target.value)} autoComplete="name" />
+              <Field label={t("Organization")} value={orgName} onChange={(e) => setOrgName(e.target.value)} autoComplete="organization" />
             </>
           )}
-          <Field label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
+          <Field label={t("Email")} type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
           <Field
             label="Password"
             type="password"

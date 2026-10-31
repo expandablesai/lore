@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 import type { DocumentSummary, Scope } from "../lib/types";
 import { Button, Badge, ErrorNote, Panel, StatusLine, errMessage, type ViewProps } from "./common";
 
@@ -32,6 +33,7 @@ function outcomeOf(res: { id: string; status: string; deduplicated?: boolean; re
 }
 
 export function Documents({ token, navigate }: ViewProps) {
+  const { t } = useI18n();
   const [docs, setDocs] = useState<DocumentSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [files, setFiles] = useState<File[]>([]);
@@ -82,10 +84,10 @@ export function Documents({ token, navigate }: ViewProps) {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-slate-100">Documents</h1>
+      <h1 className="text-xl font-semibold text-slate-100">{t("Documents")}</h1>
 
       <Panel>
-        <h2 className="mb-3 text-sm font-medium text-slate-200">Upload documents</h2>
+        <h2 className="mb-3 text-sm font-medium text-slate-200">{t("Upload documents")}</h2>
         <form className="flex flex-wrap items-end gap-3" onSubmit={onUpload}>
           <label className="block space-y-1.5">
             <span className="text-sm font-medium text-slate-300">Files</span>
@@ -137,7 +139,7 @@ export function Documents({ token, navigate }: ViewProps) {
       </Panel>
 
       <Panel>
-        <h2 className="mb-3 text-sm font-medium text-slate-200">Library</h2>
+        <h2 className="mb-3 text-sm font-medium text-slate-200">{t("Library")}</h2>
         {error && <ErrorNote message={error} />}
         {!error && docs === null && <StatusLine>Loading documents…</StatusLine>}
         {docs !== null && docs.length === 0 && <StatusLine>No documents yet.</StatusLine>}

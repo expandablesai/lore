@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 import type { OrgMember, Role } from "../lib/types";
 import { Badge, Button, ErrorNote, Field, Panel, StatusLine, errMessage, type ViewProps } from "./common";
 
@@ -12,6 +13,7 @@ function canManage(role: Role): boolean {
 }
 
 export function Members({ token, user }: ViewProps) {
+  const { t } = useI18n();
   const orgId = user.orgId;
   const [members, setMembers] = useState<OrgMember[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,11 +57,11 @@ export function Members({ token, user }: ViewProps) {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-slate-100">Members</h1>
+      <h1 className="text-xl font-semibold text-slate-100">{t("Members")}</h1>
 
       {canManage(user.role) && (
         <Panel>
-          <h2 className="mb-3 text-sm font-medium text-slate-200">Add a member</h2>
+          <h2 className="mb-3 text-sm font-medium text-slate-200">{t("Add a member")}</h2>
           <form className="space-y-3" onSubmit={onAdd}>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Display name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
@@ -89,7 +91,7 @@ export function Members({ token, user }: ViewProps) {
       )}
 
       <Panel>
-        <h2 className="mb-3 text-sm font-medium text-slate-200">Organization users</h2>
+        <h2 className="mb-3 text-sm font-medium text-slate-200">{t("Organization users")}</h2>
         {error && <ErrorNote message={error} />}
         {!error && members === null && <StatusLine>Loading members…</StatusLine>}
         {members !== null && members.length === 0 && <StatusLine>No members yet.</StatusLine>}

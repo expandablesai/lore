@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { api } from "./lib/api";
 import { useAuth } from "./lib/auth";
+import { useI18n } from "./lib/i18n";
 import { useNav } from "./lib/nav";
 import { useTheme, type Theme } from "./lib/theme";
 import type { ChatSummary } from "./lib/types";
@@ -59,6 +60,7 @@ function ChatRow({
   onOpen: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <li className="group relative">
       <button
@@ -80,7 +82,7 @@ function ChatRow({
           event.stopPropagation();
           onDelete();
         }}
-        aria-label={`Delete ${chat.title}`}
+        aria-label={t("Delete {title}", { title: chat.title })}
         className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md px-1.5 py-0.5 text-xs text-slate-500 opacity-0 transition hover:bg-rose-500/20 hover:text-rose-300 group-hover:opacity-100"
       >
         ×
@@ -91,6 +93,7 @@ function ChatRow({
 
 export function Shell() {
   const { user, me, token, logout } = useAuth();
+  const { t } = useI18n();
   const { path, navigate } = useNav();
   const { theme, setTheme, neon, setNeon } = useTheme();
   const [chats, setChats] = useState<ChatSummary[]>([]);
@@ -135,9 +138,9 @@ export function Shell() {
   else
     view = (
       <div className="space-y-4">
-        <h1 className="text-xl font-semibold text-slate-100">Not found</h1>
+        <h1 className="text-xl font-semibold text-slate-100">{t("Not found")}</h1>
         <Button variant="ghost" onClick={() => navigate("/")}>
-          Back to dashboard
+          {t("Back to dashboard")}
         </Button>
       </div>
     );
@@ -158,14 +161,14 @@ export function Shell() {
           type="button"
           onClick={() => setMenuOpen(false)}
           className="rounded-lg px-2 py-1 text-slate-500 hover:text-slate-300 lg:hidden"
-          aria-label="Close menu"
+          aria-label={t("Close menu")}
         >
           ×
         </button>
       </div>
 
       <Button onClick={() => navigate("/chat")} className="w-full">
-        New chat
+        {t("New chat")}
       </Button>
 
       <nav className="flex min-h-0 flex-col gap-1">
@@ -181,17 +184,17 @@ export function Shell() {
                   : "text-slate-400 hover:bg-slate-800/40 hover:text-slate-200",
               )}
             >
-              {item.label}
+              {t(item.label)}
             </button>
           ),
         )}
       </nav>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <p className="mb-1 px-3 text-[11px] uppercase tracking-[0.14em] text-slate-500">Recent chats</p>
+        <p className="mb-1 px-3 text-[11px] uppercase tracking-[0.14em] text-slate-500">{t("Recent chats")}</p>
         <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto pr-1">
           {chats.length === 0 && (
-            <li className="px-3 py-2 text-[13px] text-slate-500">No conversations yet.</li>
+            <li className="px-3 py-2 text-[13px] text-slate-500">{t("No conversations yet.")}</li>
           )}
           {chats.map((chat) => (
             <ChatRow
@@ -232,7 +235,7 @@ export function Shell() {
                   : "text-slate-400 hover:text-slate-200",
               )}
             >
-              {option.label}
+              {t(option.label)}
             </button>
           ))}
         </div>
@@ -248,7 +251,7 @@ export function Shell() {
               : "text-slate-400 hover:bg-slate-800/40 hover:text-slate-200",
           )}
         >
-          <span className="font-medium">Neon lights</span>
+          <span className="font-medium">{t("Neon lights")}</span>
           <span
             aria-hidden="true"
             className={cn(
@@ -282,7 +285,7 @@ export function Shell() {
           </span>
         </button>
         <Button variant="quiet" className="w-full justify-start px-3" onClick={logout}>
-          Sign out
+          {t("Sign out")}
         </Button>
       </div>
     </aside>
@@ -300,7 +303,7 @@ export function Shell() {
 
       <main className="min-w-0 flex-1">
         <div className="mb-3 flex items-center gap-3 lg:hidden">
-          <Button variant="ghost" onClick={() => setMenuOpen(true)} aria-label="Open menu">
+          <Button variant="ghost" onClick={() => setMenuOpen(true)} aria-label={t("Open menu")}>
             ☰
           </Button>
           <span className="text-sm font-medium text-slate-200">EXPANDABLES LORE</span>

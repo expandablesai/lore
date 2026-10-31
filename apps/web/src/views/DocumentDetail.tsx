@@ -1,6 +1,7 @@
 // Document detail: metadata, extracted chunks, and a reprocess action.
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 import type { Chunk, DocumentDetail as DocumentDetailData } from "../lib/types";
 import { Badge, Button, ErrorNote, Panel, StatusLine, errMessage, type ViewProps } from "./common";
 
@@ -10,6 +11,7 @@ interface DetailState {
 }
 
 export function DocumentDetail({ token, id, navigate }: ViewProps & { id: string }) {
+  const { t } = useI18n();
   const [state, setState] = useState<DetailState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -45,7 +47,7 @@ export function DocumentDetail({ token, id, navigate }: ViewProps & { id: string
         <Button variant="ghost" onClick={() => navigate("/documents")}>
           ← Back
         </Button>
-        <h1 className="text-xl font-semibold text-slate-100">{state?.document.filename ?? "Document"}</h1>
+        <h1 className="text-xl font-semibold text-slate-100">{state?.document.filename ?? t("Document")}</h1>
       </div>
 
       {error && <ErrorNote message={error} />}
@@ -86,7 +88,7 @@ export function DocumentDetail({ token, id, navigate }: ViewProps & { id: string
                 <dd className="mt-0.5 text-slate-200">{state.document.chunkCount}</dd>
               </div>
               <div>
-                <dt className="text-slate-500">Saved</dt>
+                <dt className="text-slate-500">{t("Saved")}</dt>
                 <dd className="mt-0.5 text-slate-200">
                   {new Date(state.document.createdAt).toLocaleString()}
                 </dd>
@@ -98,7 +100,7 @@ export function DocumentDetail({ token, id, navigate }: ViewProps & { id: string
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-500">Uploaded by</dt>
+                <dt className="text-slate-500">{t("Uploaded by")}</dt>
                 <dd className="mt-0.5 text-slate-200">{state.document.uploadedByName ?? "—"}</dd>
               </div>
             </dl>
@@ -115,7 +117,7 @@ export function DocumentDetail({ token, id, navigate }: ViewProps & { id: string
           </Panel>
 
           <Panel>
-            <h2 className="mb-3 text-sm font-medium text-slate-200">Chunks ({state.chunks.length})</h2>
+            <h2 className="mb-3 text-sm font-medium text-slate-200">{t("Chunks ({count})", { count: state.chunks.length })}</h2>
             {state.chunks.length === 0 ? (
               <StatusLine>No chunks extracted.</StatusLine>
             ) : (

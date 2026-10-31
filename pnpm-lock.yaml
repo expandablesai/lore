@@ -75,6 +75,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@lore/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@lore/ui':
         specifier: workspace:*
         version: link:../../packages/ui

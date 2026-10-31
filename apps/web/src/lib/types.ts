@@ -30,6 +30,8 @@ export interface MeUser {
   status: UserStatus;
   theme?: "light" | "dark" | "system";
   neon?: boolean;
+  /** Interface language; null means "follow the browser". */
+  locale?: string | null;
   hasAvatar?: boolean;
 }
 

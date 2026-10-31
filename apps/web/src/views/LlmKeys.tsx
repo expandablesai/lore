@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 import type { OrgLlmKey } from "../lib/types";
 import { Badge, Button, ErrorNote, Field, Panel, StatusLine, errMessage, type ViewProps } from "./common";
 
@@ -34,6 +35,7 @@ function canManage(role: string): boolean {
 }
 
 export function LlmKeys({ token, user }: ViewProps) {
+  const { t } = useI18n();
   const orgId = user.orgId;
   const [keys, setKeys] = useState<OrgLlmKey[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -154,11 +156,11 @@ export function LlmKeys({ token, user }: ViewProps) {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-slate-100">LLM Keys</h1>
+      <h1 className="text-xl font-semibold text-slate-100">{t("LLM Keys")}</h1>
 
       {canManage(user.role) && (
         <Panel>
-          <h2 className="mb-3 text-sm font-medium text-slate-200">Add a key</h2>
+          <h2 className="mb-3 text-sm font-medium text-slate-200">{t("Add a key")}</h2>
           <form className="space-y-3" onSubmit={onAdd}>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Label" value={label} onChange={(e) => setLabel(e.target.value)} required />
@@ -197,7 +199,7 @@ export function LlmKeys({ token, user }: ViewProps) {
       )}
 
       <Panel>
-        <h2 className="mb-3 text-sm font-medium text-slate-200">Provider keys</h2>
+        <h2 className="mb-3 text-sm font-medium text-slate-200">{t("Provider keys")}</h2>
         {error && <ErrorNote message={error} />}
         {!error && keys === null && <StatusLine>Loading keys…</StatusLine>}
         {keys !== null && keys.length === 0 && <StatusLine>No keys yet.</StatusLine>}

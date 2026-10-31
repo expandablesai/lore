@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { useI18n } from "../lib/i18n";
 import { useTheme, type Theme } from "../lib/theme";
 import { Avatar } from "../components/Brand";
 import { Button, ErrorNote, Field, Panel, errMessage, type ViewProps } from "./common";
@@ -18,6 +19,7 @@ const THEMES: { value: Theme; label: string }[] = [
 export function Profile({ token, user }: ViewProps) {
   const { me, refreshMe } = useAuth();
   const { theme, setTheme, neon, setNeon } = useTheme();
+  const { t, options, choice, setLocale } = useI18n();
   const [name, setName] = useState(user.displayName);
   const [displayNameSaving, setDisplayNameSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -42,14 +44,14 @@ export function Profile({ token, user }: ViewProps) {
         await api.uploadAvatar(token, file);
         await refreshMe();
         setCacheBust((n) => n + 1);
-        setNotice("Profile picture updated.");
+        setNotice(t("Profile picture updated."));
       } catch (e) {
         setError(errMessage(e));
       } finally {
         setUploading(false);
       }
     },
-    [refreshMe, token],
+    [refreshMe, t, token],
   );
 
   const onRemoveAvatar = useCallback(async () => {
@@ -58,7 +60,7 @@ export function Profile({ token, user }: ViewProps) {
       await api.deleteAvatar(token);
       await refreshMe();
       setCacheBust((n) => n + 1);
-      setNotice("Profile picture removed.");
+      setNotice(t("Profile picture removed."));
     } catch (e) {
       setError(errMessage(e));
     }
@@ -73,21 +75,21 @@ export function Profile({ token, user }: ViewProps) {
       try {
         await api.updateMe(token, { displayName: name.trim() });
         await refreshMe();
-        setNotice("Name updated.");
+        setNotice(t("Name updated."));
       } catch (e) {
         setError(errMessage(e));
       } finally {
         setDisplayNameSaving(false);
       }
     },
-    [name, refreshMe, token],
+    [name, refreshMe, t, token],
   );
 
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-lg font-semibold tracking-tight text-slate-100">Profile</h1>
-        <p className="text-xs text-slate-400">Your picture appears beside every message you send.</p>
+        <h1 className="text-lg font-semibold tracking-tight text-slate-100">{t("Profile")}</h1>
+        <p className="text-xs text-slate-400">{t("Your picture appears beside every message you send.")}</p>
       </header>
 
       <Panel>
@@ -104,7 +106,7 @@ export function Profile({ token, user }: ViewProps) {
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <label className="glass liquid-lift cursor-pointer rounded-full px-4 py-2 text-sm text-slate-200">
-                {uploading ? "Uploading…" : me?.hasAvatar ? "Change picture" : "Upload picture"}
+                {uploading ? t("Uploading…") : me?.hasAvatar ? t("Change picture") : t("Upload picture")}
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
@@ -115,7 +117,7 @@ export function Profile({ token, user }: ViewProps) {
               </label>
               {me?.hasAvatar && (
                 <Button variant="ghost" onClick={() => void onRemoveAvatar()}>
-                  Remove
+                  {t("Remove")}
                 </Button>
               )}
             </div>
@@ -124,16 +126,16 @@ export function Profile({ token, user }: ViewProps) {
         </div>
 
         <form className="mt-5 grid gap-3 sm:grid-cols-2" onSubmit={onSaveName}>
-          <Field label="Display name" value={name} onChange={(e) => setName(e.target.value)} required />
+          <Field label={t("Display name")} value={name} onChange={(e) => setName(e.target.value)} required />
           <div className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-slate-400">Email</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-400">{t("Email")}</span>
             <p className="rounded-2xl border border-[rgb(var(--glass-border))] px-3.5 py-2.5 text-sm text-slate-400">
               {user.email}
             </p>
           </div>
           <div className="sm:col-span-2">
             <Button type="submit" disabled={displayNameSaving || name.trim() === ""}>
-              {displayNameSaving ? "Saving…" : "Save name"}
+              {displayNameSaving ? t("Saving…") : t("Save name")}
             </Button>
           </div>
         </form>
@@ -143,7 +145,7 @@ export function Profile({ token, user }: ViewProps) {
       </Panel>
 
       <Panel>
-        <h2 className="mb-3 text-sm font-medium text-slate-200">Appearance</h2>
+        <h2 className="mb-3 text-sm font-medium text-slate-200">{t("Appearance")}</h2>
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex rounded-full bg-slate-800/50 p-1 text-xs">
             {THEMES.map((option) => (
@@ -159,7 +161,7 @@ export function Profile({ token, user }: ViewProps) {
                     : "text-slate-400 hover:text-slate-200")
                 }
               >
-                {option.label}
+                {t(option.label)}
               </button>
             ))}
           </div>
@@ -187,8 +189,56 @@ export function Profile({ token, user }: ViewProps) {
                 }
               />
             </span>
-            Neon lights
+            {t("Neon lights")}
           </button>
+        </div>
+
+        {/*
+          Language: an explicit choice beats the browser, and the browser's own
+          language is the default so a first visit is already in the right
+          language without anyone opening this page.
+        */}
+        <div className="mt-5 border-t border-[rgb(var(--glass-border))] pt-4">
+          <span className="text-xs font-medium uppercase tracking-wide text-slate-400">{t("Language")}</span>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {options.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                lang={option.value}
+                aria-pressed={choice === option.value}
+                onClick={() => {
+                  setLocale(option.value);
+                  setNotice(t("Language updated."));
+                }}
+                className={
+                  "rounded-full px-3 py-1.5 text-xs transition " +
+                  (choice === option.value
+                    ? "bg-slate-100 text-slate-900 shadow"
+                    : "glass text-slate-300 hover:text-slate-100")
+                }
+              >
+                {option.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              aria-pressed={choice === null}
+              onClick={() => {
+                setLocale(null);
+                setNotice(t("Language updated."));
+              }}
+              className={
+                "rounded-full px-3 py-1.5 text-xs transition " +
+                (choice === null
+                  ? "bg-slate-100 text-slate-900 shadow"
+                  : "text-slate-400 hover:text-slate-200")
+              }
+            >
+              {t("Follows your browser")}
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">{t("Language follows your browser unless you pick one.")}</p>
         </div>
       </Panel>
     </div>

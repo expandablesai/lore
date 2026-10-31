@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { useI18n } from "../lib/i18n";
 import { Avatar, BrainMark } from "../components/Brand";
 import type { ChatImage, ChatMessage } from "../lib/types";
 import { Button, ErrorNote, StatusLine, errMessage, type ViewProps } from "./common";
@@ -31,10 +32,10 @@ function visibleText(turn: Turn): string {
 }
 
 /** What to render for an answer that carried no text at all. */
-function answerText(turn: Turn): string {
+function answerText(turn: Turn, t: (m: string) => string): string {
   const text = visibleText(turn);
   if (text !== "") return text;
-  return (turn.images ?? []).length > 0 ? "" : "No answer came back for that one.";
+  return (turn.images ?? []).length > 0 ? "" : t("No answer came back for that one.");
 }
 
 /** Tell the shell that the chat list changed. */
@@ -44,6 +45,7 @@ function announceHistoryChange() {
 
 export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: string }) {
   const { me } = useAuth();
+  const { t } = useI18n();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -161,13 +163,13 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
     <div className="flex h-[calc(100vh-4rem)] flex-col">
       <header className="glass sticky top-0 z-10 mb-4 flex items-center justify-between gap-4 rounded-2xl px-4 py-3">
         <div>
-          <h1 className="text-lg font-semibold tracking-tight text-slate-100">Chat</h1>
+          <h1 className="text-lg font-semibold tracking-tight text-slate-100">{t("Chat")}</h1>
           <p className="text-xs text-slate-400">
-            Answers are grounded in your documents and images.
+            {t("Answers are grounded in your documents and images.")}
           </p>
         </div>
         <Button variant="ghost" onClick={() => navigate("/chat")}>
-          New chat
+          {t("New chat")}
         </Button>
       </header>
 
@@ -175,7 +177,7 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 pb-6">
           {empty && (
             <div className="glass glass-sheen rise rounded-3xl p-8 text-center">
-              <p className="text-sm font-medium text-slate-200">Ask anything about your workspace</p>
+              <p className="text-sm font-medium text-slate-200">{t("Ask anything about your workspace")}</p>
               <p className="mt-2 text-sm text-slate-400">
                 Upload a script, a PDF or a picture, then ask about it. “Show me the character
                 sheet” brings the image back with the answer.
@@ -183,7 +185,7 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
             </div>
           )}
 
-          {loadingHistory && <StatusLine>Loading conversation…</StatusLine>}
+          {loadingHistory && <StatusLine>{t("Loading conversation…")}</StatusLine>}
 
           {turns.map((turn, index) =>
             turn.role === "user" ? (
@@ -206,7 +208,7 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
                 </span>
                 <div className="min-w-0 flex-1 space-y-3">
                   <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-200">
-                    {answerText(turn)}
+                    {answerText(turn, t)}
                   </div>
                   {(turn.images ?? []).length > 0 && (
                     <>
@@ -231,7 +233,7 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
           {sending && (
             <div className="flex gap-3">
               <BrainMark size={28} />
-              <p className="text-sm text-slate-400">Thinking…</p>
+              <p className="text-sm text-slate-400">{t("Thinking…")}</p>
             </div>
           )}
         </div>
@@ -250,11 +252,11 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
             onKeyDown={onKeyDown}
             rows={1}
             aria-label="Message"
-            placeholder="Message LORE… (Enter sends, Shift+Enter for a new line)"
+            placeholder={t("Message LORE… (Enter sends, Shift+Enter for a new line)")}
             className="max-h-40 min-h-[42px] w-full resize-none bg-transparent px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none"
           />
           <Button type="submit" disabled={sending || draft.trim() === ""} className="shrink-0">
-            {sending ? "…" : "Send"}
+            {sending ? "…" : t("Send")}
           </Button>
         </form>
       </div>

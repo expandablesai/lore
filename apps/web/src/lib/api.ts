@@ -306,7 +306,7 @@ export const api = {
   setTheme: (token: string, theme: "light" | "dark" | "system") =>
     request<MeUser>("/me", { method: "PATCH", token, body: { theme } }),
 
-  updateMe: (token: string, input: { theme?: "light" | "dark" | "system"; neon?: boolean; displayName?: string }) =>
+  updateMe: (token: string, input: { theme?: "light" | "dark" | "system"; neon?: boolean; displayName?: string; locale?: string | null }) =>
     request<MeUser>("/me", { method: "PATCH", token, body: input }),
 
   uploadAvatar: (token: string, file: File) => {

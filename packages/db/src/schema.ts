@@ -91,12 +91,18 @@ export const users = pgTable("users", {
   status: userStatus("status").notNull().default("active"),
   theme: text("theme").notNull().default("system"),
   neon: boolean("neon").notNull().default(false),
+  // Interface language. Null means "follow the browser", which is what a new
+  // account wants; picking one in Profile pins it for every device.
+  locale: text("locale"),
   // Profile picture: the stored blob key and its mime, both null until one is
   // uploaded. Kept out of the session payload; the console fetches the bytes.
   avatarKey: text("avatar_key"),
   avatarMime: text("avatar_mime"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [check("theme_enum", sql`${t.theme} IN ('light','dark','system')`)]);
+}, (t) => [
+  check("theme_enum", sql`${t.theme} IN ('light','dark','system')`),
+  check("locale_enum", sql`${t.locale} IS NULL OR ${t.locale} IN ('en','hi','zh')`),
+]);
 
 // ─── Chat history ────────────────────────────────────────────────────────────
 

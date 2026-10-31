@@ -4,6 +4,7 @@
 // URLs and release them on unmount.
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 import type { ChatImage } from "../lib/types";
 import { errMessage } from "./common";
 
@@ -75,6 +76,7 @@ export function ImageThumb({
 }) {
   const { url, error } = useImageUrl(token, image.documentId);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const { t } = useI18n();
 
   if (error) {
     return (
@@ -106,8 +108,8 @@ export function ImageThumb({
           // looks like a broken button.
           void saveImages(token, [image]).then(setSaveError);
         }}
-        aria-label={`Download ${image.filename}`}
-        title={`Download ${image.filename}`}
+        aria-label={t("Download {name}", { name: image.filename })}
+        title={t("Download {name}", { name: image.filename })}
         className="absolute right-2 top-2 rounded-full bg-black/55 p-2 text-white opacity-0 backdrop-blur transition group-hover:opacity-100 focus-visible:opacity-100"
       >
         <DownloadIcon />
@@ -139,6 +141,7 @@ export function ImageViewer({
 }) {
   const { url, error } = useImageUrl(token, image.documentId);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const { t } = useI18n();
 
   const onKey = useCallback(
     (event: KeyboardEvent) => {
@@ -176,7 +179,7 @@ export function ImageViewer({
             }}
             className="rounded-full bg-white/15 px-4 py-2 text-sm font-medium text-white backdrop-blur transition hover:bg-white/25"
           >
-            Download
+            {t("Download")}
           </button>
           <button
             type="button"
@@ -185,9 +188,9 @@ export function ImageViewer({
               onClose();
             }}
             className="rounded-full bg-white/15 px-3 py-2 text-sm text-white backdrop-blur transition hover:bg-white/25"
-            aria-label="Close viewer"
+            aria-label={t("Close viewer")}
           >
-            Close
+            {t("Close")}
           </button>
         </div>
       </div>
@@ -202,7 +205,7 @@ export function ImageViewer({
             onClick={(event) => event.stopPropagation()}
           />
         ) : (
-          <p className="text-sm text-white/70">Loading…</p>
+          <p className="text-sm text-white/70">{t("Loading…")}</p>
         )}
       </div>
     </div>
@@ -213,6 +216,7 @@ export function ImageViewer({
 export function DownloadAllButton({ token, images }: { token: string; images: ChatImage[] }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { t } = useI18n();
 
   if (images.length < 2) return null;
 
@@ -231,7 +235,7 @@ export function DownloadAllButton({ token, images }: { token: string; images: Ch
         className="glass liquid-lift inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium text-slate-200"
       >
         <DownloadIcon />
-        {busy ? "Saving…" : `Download all ${images.length} images`}
+        {busy ? t("Saving…") : t("Download all {count} images", { count: images.length })}
       </button>
       {error && <span className="text-xs text-rose-300">{error}</span>}
     </div>

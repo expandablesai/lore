@@ -6,6 +6,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../lib/api";
 import type { Assertion, AssertionStatus, Scope } from "../lib/types";
+import { useI18n } from "../lib/i18n";
 import { Capture } from "./Capture";
 import { Badge, Button, ErrorNote, Field, Panel, StatusLine, errMessage, type ViewProps } from "./common";
 
@@ -19,6 +20,7 @@ function statusTone(status: AssertionStatus): "emerald" | "amber" | "rose" | "sl
 }
 
 export function Memory({ token, user, navigate }: ViewProps) {
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<Scope>("org");
   const [assertions, setAssertions] = useState<Assertion[] | null>(null);
@@ -90,26 +92,26 @@ export function Memory({ token, user, navigate }: ViewProps) {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-xl font-semibold text-slate-100">Memory</h1>
+        <h1 className="text-xl font-semibold text-slate-100">{t("Memory")}</h1>
         <p className="mt-1 text-xs text-slate-400">
-          Paste something to keep it, or write a fact, then recall it later.
+          {t("Paste something to keep it, or write a fact, then recall it later.")}
         </p>
       </header>
 
       <Capture token={token} user={user} navigate={navigate} />
 
       <Panel>
-        <h2 className="mb-3 text-sm font-medium text-slate-200">Remember a fact</h2>
+        <h2 className="mb-3 text-sm font-medium text-slate-200">{t("Remember a fact")}</h2>
         <form className="space-y-3" onSubmit={onRemember}>
           <div className="grid gap-3 sm:grid-cols-3">
-            <Field label="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} required />
-            <Field label="Predicate" value={predicate} onChange={(e) => setPredicate(e.target.value)} required />
-            <Field label="Object" value={object} onChange={(e) => setObject(e.target.value)} required />
+            <Field label={t("Subject")} value={subject} onChange={(e) => setSubject(e.target.value)} required />
+            <Field label={t("Predicate")} value={predicate} onChange={(e) => setPredicate(e.target.value)} required />
+            <Field label={t("Object")} value={object} onChange={(e) => setObject(e.target.value)} required />
           </div>
           <div className="grid gap-3 sm:grid-cols-[1fr_12rem] sm:items-end">
-            <Field label="Sources (comma-separated)" value={sources} onChange={(e) => setSources(e.target.value)} placeholder="notes.txt, https://…" />
+            <Field label={t("Sources (comma-separated)")} value={sources} onChange={(e) => setSources(e.target.value)} placeholder="notes.txt, https://…" />
             <label className="block space-y-1.5">
-              <span className="text-xs font-medium uppercase tracking-wide text-slate-400">Scope</span>
+              <span className="text-xs font-medium uppercase tracking-wide text-slate-400">{t("Scope")}</span>
               <select
                 aria-label="Fact scope"
                 value={rememberScope}
@@ -126,16 +128,16 @@ export function Memory({ token, user, navigate }: ViewProps) {
           </div>
           {rememberError && <ErrorNote message={rememberError} />}
           <Button type="submit" disabled={saving}>
-            {saving ? "Saving…" : "Remember"}
+            {saving ? t("Saving…") : t("Remember")}
           </Button>
         </form>
       </Panel>
 
       <Panel>
-        <h2 className="mb-3 text-sm font-medium text-slate-200">Recall</h2>
+        <h2 className="mb-3 text-sm font-medium text-slate-200">{t("Recall")}</h2>
         <form className="flex flex-wrap items-end gap-3" onSubmit={onSearch}>
           <div className="min-w-[12rem] flex-1">
-            <Field label="Query" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="sky" />
+            <Field label={t("Query")} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="sky" />
           </div>
           <label className="block space-y-1.5">
             <span className="text-sm font-medium text-slate-300">Scope</span>
@@ -153,7 +155,7 @@ export function Memory({ token, user, navigate }: ViewProps) {
             </select>
           </label>
           <Button type="submit" disabled={searching}>
-            {searching ? "Searching…" : "Search"}
+            {searching ? t("Searching…") : t("Search")}
           </Button>
         </form>
 
@@ -165,9 +167,9 @@ export function Memory({ token, user, navigate }: ViewProps) {
 
         <div className="mt-4">
           {assertions === null ? (
-            <StatusLine>Run a recall to see assertions.</StatusLine>
+            <StatusLine>{t("Run a recall to see assertions.")}</StatusLine>
           ) : assertions.length === 0 ? (
-            <StatusLine>No matching assertions.</StatusLine>
+            <StatusLine>{t("No matching assertions.")}</StatusLine>
           ) : (
             <ul className="divide-y divide-slate-800">
               {assertions.map((a) => (
@@ -183,7 +185,7 @@ export function Memory({ token, user, navigate }: ViewProps) {
                   <div className="flex shrink-0 items-center gap-2">
                     <Badge tone={statusTone(a.status)}>{a.status}</Badge>
                     <Button variant="danger" onClick={() => void onForget(a.id)}>
-                      Forget
+                      {t("Forget")}
                     </Button>
                   </div>
                 </li>

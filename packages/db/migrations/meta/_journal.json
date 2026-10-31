@@ -71,6 +71,20 @@
       "when": 1793458266795,
       "tag": "0009_common_lord_tyger",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793461812289,
+      "tag": "0010_massive_sandman",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793462086666,
+      "tag": "0011_new_salo",
+      "breakpoints": true
     }
   ]
 }

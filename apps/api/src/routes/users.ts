@@ -12,6 +12,7 @@ import {
   type Db,
 } from "@lore/db";
 import type { FastifyPluginAsync } from "fastify";
+import { LOCALES, isLocale } from "@lore/core";
 import type { AuthenticatedUser } from "../plugins/auth-guard.ts";
 
 const ROLE_RANK: Record<string, number> = { viewer: 0, member: 1, org_admin: 2, superadmin: 3 };
@@ -63,6 +64,8 @@ export const createUserRoutes: (db: Db) => FastifyPluginAsync = (db) => async (a
       status: user.status,
       theme: await themeOf(db, user.id),
       neon: await neonOf(db, user.id),
+      // Null means "follow the browser", which is the default for a new account.
+      locale: user.locale,
       hasAvatar: Boolean(avatar?.avatarKey),
     };
   });
@@ -125,19 +128,26 @@ export const createUserRoutes: (db: Db) => FastifyPluginAsync = (db) => async (a
       .send(data);
   });
 
-  app.patch<{ Body: { displayName?: string; theme?: string; neon?: boolean } }>("/me", async (request, reply) => {
-    const { displayName, theme, neon } = request.body;
+  app.patch<{ Body: { displayName?: string; theme?: string; neon?: boolean; locale?: string | null } }>("/me", async (request, reply) => {
+    const { displayName, theme, neon, locale } = request.body;
     if (theme !== undefined && !["light", "dark", "system"].includes(theme)) {
       return reply.code(400).send({ error: "theme must be light, dark or system" });
     }
     if (neon !== undefined && typeof neon !== "boolean") {
       return reply.code(400).send({ error: "neon must be a boolean" });
     }
-    if (displayName || theme || neon !== undefined) {
+    // null is meaningful: it hands the choice back to the browser.
+    if (locale !== undefined && locale !== null && !isLocale(locale)) {
+      return reply
+        .code(400)
+        .send({ error: `language must be one of ${LOCALES.join(", ")} or null` });
+    }
+    if (displayName || theme || neon !== undefined || locale !== undefined) {
       const set: Record<string, unknown> = {};
       if (displayName) set.displayName = displayName;
       if (theme) set.theme = theme;
       if (neon !== undefined) set.neon = neon;
+      if (locale !== undefined) set.locale = locale;
       await db.update(users).set(set).where(eq(users.id, request.user.id));
       await db.insert(audit).values({ orgId: request.user.orgId, actorId: request.user.id, action: "user.update", targetType: "user", targetIds: [request.user.id], ip: request.ip });
     }
@@ -151,6 +161,7 @@ export const createUserRoutes: (db: Db) => FastifyPluginAsync = (db) => async (a
       orgId: updated.orgId,
       theme: updated.theme,
       neon: updated.neon,
+      locale: updated.locale,
     };
   });
 

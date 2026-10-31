@@ -20,6 +20,7 @@ import {
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { createAnthropicAdapter, createOpenAIAdapter, createOpenAIEmbedder } from "@lore/proxy";
 import { deterministicEmbed, EMBEDDING_DIM, HASH_DIM, HASH_MODEL, vectorToPgText, zeroPad } from "@lore/core";
+import { LOCALE_NAMES, isLocale, resolveLocale } from "@lore/core";
 
 /**
  * In-app chat — retrieves the caller's org memories by cosine similarity over
@@ -255,6 +256,15 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
                 .join(", ")}. Refer to them by name when it helps.`
             : "";
 
+        // Answer in the reader's language: their explicit choice if they made
+        // one, otherwise whatever the browser asked for. The language names are
+        // spelled out because a locale tag means nothing to a model.
+        const answerLocale =
+          (request.user.locale && isLocale(request.user.locale)
+            ? request.user.locale
+            : null) ?? resolveLocale(request.headers["accept-language"]);
+        const answerLanguage = LOCALE_NAMES[answerLocale];
+
         const adapter =
           chatKey.apiType === "anthropic"
             ? createAnthropicAdapter({ apiKey: chatKey.apiKey, baseUrl: chatKey.baseUrl })
@@ -267,6 +277,7 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
               content: [
                 CAPABILITIES,
                 "",
+                `Answer in ${answerLanguage}. Keep names, code, quotations and filenames as they are.`,
                 "Ground your answer in the retrieved memories when they are relevant; say when they are not.",
                 memory === "" ? "No memories were retrieved for this question." : "",
                 shown,

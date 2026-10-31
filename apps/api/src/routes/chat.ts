@@ -278,6 +278,21 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
           ],
         });
         const upstream = res.choices[0]?.message;
+        if ((upstream?.content ?? "").trim() === "") {
+          // An empty answer is otherwise indistinguishable from "nothing to say",
+          // and the difference decides the fix (a token budget, a reasoning
+          // model, or a gateway that answered with an error object). Log the
+          // shape, never the text.
+          request.log.warn(
+            {
+              model: res.model,
+              choices: res.choices.length,
+              fields: Object.keys(upstream ?? {}),
+              contentLength: (upstream?.content ?? "").length,
+            },
+            "chat provider returned an empty answer",
+          );
+        }
         // A provider can return no text at all, and a blank bubble with no
         // explanation reads as a broken app. Say what happened instead.
         const content =

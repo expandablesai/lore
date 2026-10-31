@@ -63,7 +63,9 @@ services:
 
   web:
     image: ghcr.io/expandyne/lore:latest
-    entrypoint: ["sh", "-c", "cp -a apps/web/dist/. /web_dist/"]
+    # Replace the published bundle rather than layering it over the previous
+    # build, so old hashed assets stop accumulating in the volume.
+    entrypoint: ["sh", "-c", "rm -rf /web_dist/* && cp -a apps/web/dist/. /web_dist/"]
     volumes:
       - web_dist:/web_dist
     restart: "no"

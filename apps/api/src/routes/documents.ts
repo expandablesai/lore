@@ -6,6 +6,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { writeFile, mkdir } from "node:fs/promises";
 import { join, extname } from "node:path";
 import type { Db } from "@lore/db";
@@ -15,6 +16,7 @@ import {
   getDocument,
   listDocuments,
   getDocumentChunks,
+  requeueDocument,
   sendDocumentIngest,
   sendDocumentReprocess,
   createBoss,
@@ -100,14 +102,32 @@ export const createDocumentRoutes: (db: Db) => FastifyPluginAsync = (db) => asyn
     const sha256 = createHash("sha256").update(buffer).digest("hex");
     const sizeBytes = buffer.length;
 
-    // Dedupe: check if same content already exists for this org
+    // Dedupe: same bytes already uploaded to this org
     const existing = await findDocumentByHash(db, user.orgId, sha256);
     if (existing) {
-      return reply.code(200).send({
-        id: existing.id,
-        deduplicated: true,
-        status: existing.status,
+      const blobPresent = existsSync(join(blobsDir(), existing.storageKey));
+      if (existing.status !== "failed" && blobPresent) {
+        return reply.code(200).send({
+          id: existing.id,
+          deduplicated: true,
+          status: existing.status,
+        });
+      }
+      // The stored copy never produced usable derived data (ingestion failed,
+      // or the blob was lost). Returning it as "already here" would strand the
+      // file permanently, so restore the blob and run the pipeline again.
+      await mkdir(blobsDir(), { recursive: true });
+      const retryPath = join(blobsDir(), existing.storageKey);
+      await writeFile(retryPath, buffer);
+      await requeueDocument(db, existing.id);
+      const retryBoss = await getBoss();
+      await sendDocumentIngest(retryBoss, {
+        documentId: existing.id,
+        orgId: user.orgId,
+        storageKey: existing.storageKey,
+        mime,
       });
+      return reply.code(202).send({ id: existing.id, status: "queued", reprocessed: true });
     }
 
     // Store blob to disk
@@ -181,6 +201,14 @@ export const createDocumentRoutes: (db: Db) => FastifyPluginAsync = (db) => asyn
     const doc = await getDocument(db, request.params.id);
     if (!doc) return reply.code(404).send({ error: "not found" });
     if (doc.orgId !== user.orgId) return reply.code(403).send({ error: "forbidden" });
+
+    // Reprocess re-reads the stored blob, so a document whose source is gone
+    // would fail again with an opaque ENOENT. Say what to do instead.
+    if (!existsSync(join(blobsDir(), doc.storageKey))) {
+      return reply.code(409).send({
+        error: "source file is no longer stored — upload the document again to re-index it",
+      });
+    }
 
     const bossInstance = await getBoss();
     await sendDocumentReprocess(bossInstance, {

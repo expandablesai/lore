@@ -67,6 +67,7 @@ export interface DocumentSummary {
   sizeBytes: number;
   status: DocumentStatus;
   pageCount: number | null;
+  error: string | null;
   createdAt: string;
 }
 
@@ -97,6 +98,7 @@ export interface UploadResult {
   id: string;
   status: DocumentStatus;
   deduplicated?: boolean;
+  reprocessed?: boolean;
 }
 
 export interface Assertion {

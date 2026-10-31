@@ -38,13 +38,45 @@ export async function findDocumentByHash(
   db: Db,
   orgId: string,
   sha256: string,
-): Promise<{ id: string; status: string } | null> {
+): Promise<{ id: string; status: string; storageKey: string } | null> {
   const rows = await db
-    .select({ id: documents.id, status: documents.status })
+    .select({ id: documents.id, status: documents.status, storageKey: documents.storageKey })
     .from(documents)
     .where(and(eq(documents.orgId, orgId), eq(documents.sha256, sha256)))
     .limit(1);
   return rows[0] ?? null;
+}
+
+/**
+ * Reset a document to 'queued' so an upload of the same bytes re-runs ingestion.
+ *
+ * Dedupe normally short-circuits a re-upload, but a document that failed has no
+ * usable derived data — returning it as "already here" would strand the file in
+ * a permanently failed state with nothing to click.
+ */
+export async function requeueDocument(db: Db, id: string): Promise<void> {
+  await db
+    .update(documents)
+    .set({ status: "queued", error: null, extractedAt: null })
+    .where(eq(documents.id, id));
+}
+
+/**
+ * The embedding model most of this org's chunks were indexed with.
+ *
+ * Retrieval has to embed the query in the same vector space as the stored
+ * chunks; mixing models inside one cosine scan silently returns noise.
+ */
+export async function dominantEmbeddingModel(db: Db, orgId: string): Promise<string | null> {
+  const rows = await db
+    .select({ model: embeddings.model, count: sql<number>`count(*)::int` })
+    .from(embeddings)
+    .innerJoin(chunks, eq(chunks.id, embeddings.entityId))
+    .where(and(eq(embeddings.entityType, "chunk"), eq(chunks.orgId, orgId)))
+    .groupBy(embeddings.model)
+    .orderBy(sql`count(*) DESC`)
+    .limit(1);
+  return rows[0]?.model ?? null;
 }
 
 /** Get a document by id. */
@@ -113,6 +145,7 @@ export async function listDocuments(
   sizeBytes: number;
   status: string;
   pageCount: number | null;
+  error: string | null;
   createdAt: Date;
 }>> {
   return db
@@ -123,6 +156,7 @@ export async function listDocuments(
       sizeBytes: documents.sizeBytes,
       status: documents.status,
       pageCount: documents.pageCount,
+      error: documents.error,
       createdAt: documents.createdAt,
     })
     .from(documents)

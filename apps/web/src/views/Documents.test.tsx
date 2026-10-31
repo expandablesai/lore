@@ -16,12 +16,27 @@ describe("Documents", () => {
     installFetchMock({
       "/api/documents": jsonResponse(200, {
         documents: [
-          { id: "d1", filename: "notes.txt", mime: "text/plain", sizeBytes: 12, status: "indexed", pageCount: 1, createdAt: "now" },
+          { id: "d1", filename: "notes.txt", mime: "text/plain", sizeBytes: 12, status: "indexed", pageCount: 1, error: null, createdAt: "now" },
         ],
       }),
     });
     render(<Documents token="t" user={user} navigate={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("notes.txt")).toBeInTheDocument());
+  });
+
+  it("shows why a document failed to index", async () => {
+    installFetchMock({
+      "/api/documents": jsonResponse(200, {
+        documents: [
+          { id: "d2", filename: "script.docx", mime: "application/msword", sizeBytes: 99, status: "failed", pageCount: null, error: "ENOENT: no such file or directory", createdAt: "now" },
+        ],
+      }),
+    });
+    render(<Documents token="t" user={user} navigate={vi.fn()} />);
+    await waitFor(() =>
+      expect(screen.getByText("ENOENT: no such file or directory")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("failed")).toBeInTheDocument();
   });
 
   it("uploads a file and navigates to its detail page", async () => {

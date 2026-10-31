@@ -1,9 +1,27 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { unlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { sql } from "drizzle-orm";
 import { createDb, type Db } from "@lore/db";
 import type { FastifyInstance } from "fastify";
 import { createApp } from "../app.ts";
 
+process.env.BLOBS_DIR ??= join(tmpdir(), "lore-blobs-test");
+
 const DATABASE_URL = process.env.DATABASE_URL ?? "postgresql://lore:lore@localhost:5432/lore_test";
+
+/** Build a one-file multipart body (the route reads a single `file` part). */
+function multipart(filename: string, content: string, mime: string, boundary: string): string {
+  return [
+    `--${boundary}`,
+    `Content-Disposition: form-data; name="file"; filename="${filename}"`,
+    `Content-Type: ${mime}`,
+    "",
+    content,
+    `--${boundary}--`,
+  ].join("\r\n");
+}
 
 describe("M3 ingestion: document upload, dedupe, list, read, reprocess", () => {
   let db: Db;
@@ -106,8 +124,78 @@ describe("M3 ingestion: document upload, dedupe, list, read, reprocess", () => {
     expect(json2.id).toBe(id1);
   });
 
-  test("POST /documents/upload rejects unsupported MIME type", async () => {
-    const boundary = "----M3BadMime";
+  test("POST /documents/upload re-runs ingestion for a previously failed document", async () => {
+    const content = `Failed ingestion recovery ${crypto.randomUUID()}`;
+    const boundary = "----M3FailedRetry";
+    const body = multipart("failed.txt", content, "text/plain", boundary);
+    const post = () =>
+      app.inject({
+        method: "POST",
+        url: "/documents/upload",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": `multipart/form-data; boundary=${boundary}`,
+        },
+        payload: body,
+      });
+
+    const first = await post();
+    expect(first.statusCode).toBe(202);
+    const docId = (first.json() as { id: string }).id;
+
+    // Simulate the worker having failed the document (a lost source blob does this).
+    await db.execute(sql`UPDATE documents SET status = 'failed', error = 'boom' WHERE id = ${docId}::uuid`);
+
+    const retry = await post();
+    expect(retry.statusCode).toBe(202);
+    const json = retry.json() as { id: string; status: string; reprocessed?: boolean };
+    expect(json.id).toBe(docId);
+    expect(json.status).toBe("queued");
+    expect(json.reprocessed).toBe(true);
+
+    // The row is usable again: queued, with the previous error cleared.
+    const detail = await app.inject({
+      method: "GET",
+      url: `/documents/${docId}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const doc = (detail.json() as { document: { status: string; error: string | null } }).document;
+    expect(doc.status).toBe("queued");
+    expect(doc.error).toBeNull();
+  });
+
+  test("POST /documents/:id/reprocess returns 409 when the stored blob is gone", async () => {
+    const content = `Missing blob ${crypto.randomUUID()}`;
+    const boundary = "----M3MissingBlob";
+    const upload = await app.inject({
+      method: "POST",
+      url: "/documents/upload",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": `multipart/form-data; boundary=${boundary}`,
+      },
+      payload: multipart("gone.txt", content, "text/plain", boundary),
+    });
+    const docId = (upload.json() as { id: string }).id;
+
+    const detail = await app.inject({
+      method: "GET",
+      url: `/documents/${docId}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const storageKey = (detail.json() as { document: { storageKey: string } }).document.storageKey;
+    await unlink(join(process.env.BLOBS_DIR as string, storageKey));
+
+    const r = await app.inject({
+      method: "POST",
+      url: `/documents/${docId}/reprocess`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(r.statusCode).toBe(409);
+    expect((r.json() as { error: string }).error).toMatch(/upload the document again/i);
+  });
+
+  test("POST /documents/upload rejects unsupported MIME type", async () => {    const boundary = "----M3BadMime";
     const body = [
       `--${boundary}`,
       'Content-Disposition: form-data; name="file"; filename="evil.exe"',

@@ -4,9 +4,16 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../lib/api";
 import type { DocumentSummary, Scope } from "../lib/types";
-import { Button, ErrorNote, Panel, StatusLine, errMessage, type ViewProps } from "./common";
+import { Button, Badge, ErrorNote, Panel, StatusLine, errMessage, type ViewProps } from "./common";
 
 const SCOPES: Scope[] = ["personal", "project", "org"];
+
+function statusTone(status: DocumentSummary["status"]): "emerald" | "amber" | "rose" | "slate" {
+  if (status === "indexed") return "emerald";
+  if (status === "failed") return "rose";
+  if (status === "queued" || status === "extracting") return "amber";
+  return "slate";
+}
 
 export function Documents({ token, navigate }: ViewProps) {
   const [docs, setDocs] = useState<DocumentSummary[] | null>(null);
@@ -94,12 +101,17 @@ export function Documents({ token, navigate }: ViewProps) {
               <li key={doc.id}>
                 <button
                   onClick={() => navigate(`/documents/${doc.id}`)}
-                  className="flex w-full items-center justify-between py-3 text-left hover:bg-slate-800/40"
+                  className="flex w-full items-start justify-between gap-3 py-3 text-left hover:bg-slate-800/40"
                 >
-                  <span className="text-sm text-slate-100">{doc.filename}</span>
-                  <span className="text-xs text-slate-500">
-                    {doc.mime} · {doc.status}
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm text-slate-100">{doc.filename}</span>
+                    {doc.status === "failed" && doc.error ? (
+                      <span className="mt-1 block truncate text-xs text-rose-300">{doc.error}</span>
+                    ) : (
+                      <span className="mt-1 block text-xs text-slate-500">{doc.mime}</span>
+                    )}
                   </span>
+                  <Badge tone={statusTone(doc.status)}>{doc.status}</Badge>
                 </button>
               </li>
             ))}

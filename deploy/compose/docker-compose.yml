@@ -27,6 +27,7 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile
+    restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://lore:${POSTGRES_PASSWORD:-lore}@db:5432/lore
       NODE_OPTIONS: "--max-old-space-size=1024"
@@ -47,6 +48,7 @@ services:
   worker:
     image: ghcr.io/expandyne/lore:latest
     command: ["node", "apps/worker/dist/index.js"]
+    restart: unless-stopped
     volumes:
       - /srv/lore/blobs:/srv/lore/blobs
     environment:

@@ -217,6 +217,21 @@ describe("M3 ingestion: document upload, dedupe, list, read, reprocess", () => {
     expect(r.statusCode).toBe(415);
   });
 
+  test("POST /documents/upload refuses an image and says why", async () => {
+    const boundary = "----M3Image";
+    const r = await app.inject({
+      method: "POST",
+      url: "/documents/upload",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": `multipart/form-data; boundary=${boundary}`,
+      },
+      payload: multipart("portfolio.png", "not-really-a-png", "image/png", boundary),
+    });
+    expect(r.statusCode).toBe(415);
+    expect((r.json() as { error: string }).error).toMatch(/OCR or a vision model/i);
+  });
+
   // ─── List ──────────────────────────────────────────────────────────────────
 
   test("GET /documents lists uploaded documents", async () => {

@@ -133,10 +133,33 @@ function parseCsvLine(line: string): string[] {
 }
 
 /**
+ * Whether a buffer is binary rather than text.
+ *
+ * A PNG or ZIP handed to the text extractor decodes to replacement characters
+ * and NUL bytes; NUL cannot be stored in a Postgres text column, so the failure
+ * surfaces far from its cause. Reject it here, where the reason is obvious.
+ */
+export function looksBinary(buffer: Buffer): boolean {
+  const probe = buffer.subarray(0, Math.min(buffer.length, 4096));
+  if (probe.length === 0) return false;
+  let control = 0;
+  for (const byte of probe) {
+    if (byte === 0) return true;
+    if (byte < 9 || (byte > 13 && byte < 32)) control += 1;
+  }
+  return control / probe.length > 0.1;
+}
+
+/**
  * Extract text from plain text formats (MD, TXT, HTML).
  * Front-matter is preserved as part of the text.
  */
 export function extractPlainText(buffer: Buffer): ExtractionResult {
+  if (looksBinary(buffer)) {
+    throw new Error(
+      "file is not plain text — binary formats need their own extractor (PDF, DOCX, XLSX, CSV)",
+    );
+  }
   const text = buffer.toString("utf-8");
   const chunks = chunkText(text);
   return { pages: null, text, pageCount: null, chunks };

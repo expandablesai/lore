@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractCsv, extractPlainText, extractHtml, extractXlsx } from "./extract.ts";
+import { extractCsv, extractPlainText, extractHtml, extractXlsx, looksBinary } from "./extract.ts";
 
 describe("extractPlainText", () => {
   it("extracts text from a buffer", () => {
@@ -9,6 +9,17 @@ describe("extractPlainText", () => {
     expect(result.text).toContain("Second paragraph.");
     expect(result.chunks.length).toBeGreaterThanOrEqual(1);
     expect(result.pageCount).toBeNull();
+  });
+
+  it("refuses a binary file named as text", () => {
+    // A PNG starts with the 0x89 'PNG' signature and is full of NUL bytes.
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d]);
+    expect(looksBinary(png)).toBe(true);
+    expect(() => extractPlainText(png)).toThrow(/not plain text/i);
+  });
+
+  it("treats ordinary prose, including non-latin text, as text", () => {
+    expect(looksBinary(Buffer.from("陈莲是李伟的母亲。", "utf-8"))).toBe(false);
   });
 });
 

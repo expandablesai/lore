@@ -35,10 +35,15 @@ const ALLOWED_MIMES = new Set([
   "text/plain",
   "text/markdown",
   "text/html",
-  "image/png",
-  "image/jpeg",
-  "image/webp",
 ]);
+
+/**
+ * Images need OCR or a vision model to become text. Neither is part of this
+ * deployment, and decoding the bytes as UTF-8 produces NUL-laden garbage that
+ * cannot be stored — so refuse them with the reason instead of accepting a file
+ * that is guaranteed to fail later.
+ */
+const IMAGE_MIMES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 /** Resolve the blobs directory from environment. */
 function blobsDir(): string {
@@ -62,7 +67,6 @@ function mimeFromExtension(ext: string): string | null {
   };
   return map[ext.toLowerCase()] ?? null;
 }
-
 export const createDocumentRoutes: (db: Db) => FastifyPluginAsync = (db) => async (app) => {
   // Shared boss instance for job dispatch (lazy-initialized)
   let boss: ReturnType<typeof createBoss> | null = null;
@@ -93,6 +97,12 @@ export const createDocumentRoutes: (db: Db) => FastifyPluginAsync = (db) => asyn
 
     // Determine MIME type
     const mime = file.mimetype || mimeFromExtension(extname(file.filename)) || "application/octet-stream";
+    if (IMAGE_MIMES.has(mime)) {
+      return reply.code(415).send({
+        error:
+          "image ingestion needs OCR or a vision model, which is not configured — upload PDF, DOCX, XLSX, CSV, TXT, Markdown or HTML",
+      });
+    }
     if (!ALLOWED_MIMES.has(mime)) {
       return reply.code(415).send({ error: `unsupported MIME type: ${mime}` });
     }

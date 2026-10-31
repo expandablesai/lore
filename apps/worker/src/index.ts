@@ -153,6 +153,28 @@ async function ingestDocument(
   }
 }
 
+/**
+ * One document per job: a failure is recorded on the document row and the
+ * worker moves on.
+ *
+ * Letting the error escape kills the process — pg-boss treats an unhandled job
+ * error as fatal — and a single unindexable upload then stops ingestion for
+ * every org until someone notices.
+ */
+async function runJob(
+  db: ReturnType<typeof createDb>,
+  job: { id: string; data: DocumentIngestPayload | DocumentReprocessPayload },
+): Promise<void> {
+  try {
+    await ingestDocument(db, job.data);
+  } catch (error) {
+    console.error(
+      `job ${job.id} (document ${job.data.documentId}) failed:`,
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
 export async function startWorker(): Promise<PgBoss> {
   const databaseUrl = process.env["DATABASE_URL"];
   if (!databaseUrl) {
@@ -184,13 +206,13 @@ export async function startWorker(): Promise<PgBoss> {
 
   await boss.work<DocumentIngestPayload>(JOB_DOCUMENT_INGEST, async (jobs) => {
     for (const job of jobs) {
-      await ingestDocument(db, job.data);
+      await runJob(db, job);
     }
   });
 
   await boss.work<DocumentReprocessPayload>(JOB_DOCUMENT_REPROCESS, async (jobs) => {
     for (const job of jobs) {
-      await ingestDocument(db, job.data);
+      await runJob(db, job);
     }
   });
 

@@ -154,6 +154,7 @@ export const createDocumentRoutes: (db: Db) => FastifyPluginAsync = (db) => asyn
       orgId: user.orgId,
       projectId: null,
       ownerUserId: user.id,
+      uploadedBy: user.id,
       scope,
       filename: file.filename,
       mime,

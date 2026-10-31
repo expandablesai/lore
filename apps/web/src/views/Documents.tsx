@@ -154,7 +154,13 @@ export function Documents({ token, navigate }: ViewProps) {
                     {doc.status === "failed" && doc.error ? (
                       <span className="mt-1 block truncate text-xs text-rose-300">{doc.error}</span>
                     ) : (
-                      <span className="mt-1 block text-xs text-slate-500">{doc.mime}</span>
+                      <span className="mt-1 block text-xs text-slate-500">
+                        {doc.mime}
+                        {doc.chunkCount > 0 ? ` · ${doc.chunkCount} chunk${doc.chunkCount === 1 ? "" : "s"}` : ""}
+                        {doc.uploadedByName ? ` · ${doc.uploadedByName}` : ""}
+                        {" · "}
+                        {new Date(doc.createdAt).toLocaleDateString()}
+                      </span>
                     )}
                   </span>
                   <Badge tone={statusTone(doc.status)}>{doc.status}</Badge>

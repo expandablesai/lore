@@ -1,9 +1,33 @@
 import { eq } from "drizzle-orm";
-import { users, audit, type Db } from "@lore/db";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { extname, join } from "node:path";
+import { randomUUID } from "node:crypto";
+import {
+  users,
+  audit,
+  clearUserAvatar,
+  getUserAvatar,
+  setUserAvatar,
+  type Db,
+} from "@lore/db";
 import type { FastifyPluginAsync } from "fastify";
 import type { AuthenticatedUser } from "../plugins/auth-guard.ts";
 
 const ROLE_RANK: Record<string, number> = { viewer: 0, member: 1, org_admin: 2, superadmin: 3 };
+
+/** Where uploaded files live (shared with the document store). */
+function blobsDir(): string {
+  return process.env.BLOBS_DIR ?? "/srv/lore/blobs";
+}
+
+/** Profile pictures are small and only these formats are displayed. */
+const AVATAR_MIMES: Record<string, string> = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/webp": ".webp",
+};
+const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 
 /** The stored theme choice; "system" until the reader picks one. */
 async function themeOf(db: Db, userId: string): Promise<string> {
@@ -20,6 +44,7 @@ async function neonOf(db: Db, userId: string): Promise<boolean> {
 export const createUserRoutes: (db: Db) => FastifyPluginAsync = (db) => async (app) => {
   app.get("/me", async (request) => {
     const user = request.user;
+    const avatar = await getUserAvatar(db, user.id);
     return {
       id: user.id,
       email: user.email,
@@ -29,7 +54,66 @@ export const createUserRoutes: (db: Db) => FastifyPluginAsync = (db) => async (a
       status: user.status,
       theme: await themeOf(db, user.id),
       neon: await neonOf(db, user.id),
+      hasAvatar: Boolean(avatar?.avatarKey),
     };
+  });
+
+  /**
+   * Upload a profile picture.
+   *
+   * The bytes go to the same blob store as documents; the user row keeps only
+   * the key and mime, so the session payload never carries image data.
+   */
+  app.post("/me/avatar", async (request, reply) => {
+    const file = await request.file();
+    if (!file) return reply.code(400).send({ error: "multipart file required" });
+    const ext = AVATAR_MIMES[file.mimetype];
+    if (!ext) {
+      return reply.code(415).send({ error: "avatar must be a PNG, JPEG or WebP image" });
+    }
+
+    const buffer = await file.toBuffer();
+    if (buffer.length > AVATAR_MAX_BYTES) {
+      return reply.code(413).send({ error: "avatar must be smaller than 5 MB" });
+    }
+
+    const key = join("avatars", `${randomUUID()}${ext}`);
+    await mkdir(join(blobsDir(), "avatars"), { recursive: true });
+    await writeFile(join(blobsDir(), key), buffer);
+    await setUserAvatar(db, request.user.id, key, file.mimetype);
+    await db.insert(audit).values({
+      orgId: request.user.orgId,
+      actorId: request.user.id,
+      action: "user.avatar",
+      targetType: "user",
+      targetIds: [request.user.id],
+      ip: request.ip,
+    });
+    return reply.code(201).send({ hasAvatar: true });
+  });
+
+  app.delete("/me/avatar", async (request) => {
+    await clearUserAvatar(db, request.user.id);
+    return { hasAvatar: false };
+  });
+
+  /** Serve a colleague's picture: same org only, never anonymous. */
+  app.get<{ Params: { id: string } }>("/users/:id/avatar", async (request, reply) => {
+    const avatar = await getUserAvatar(db, request.params.id);
+    if (!avatar || !avatar.avatarKey || !avatar.avatarMime) {
+      return reply.code(404).send({ error: "no avatar" });
+    }
+    if (avatar.orgId !== request.user.orgId) {
+      return reply.code(404).send({ error: "no avatar" });
+    }
+    const path = join(blobsDir(), avatar.avatarKey);
+    if (!existsSync(path)) return reply.code(410).send({ error: "avatar file is gone" });
+    const data = await readFile(path);
+    return reply
+      .header("content-type", avatar.avatarMime)
+      .header("content-length", String(data.length))
+      .header("cache-control", "private, max-age=60")
+      .send(data);
   });
 
   app.patch<{ Body: { displayName?: string; theme?: string; neon?: boolean } }>("/me", async (request, reply) => {

@@ -296,8 +296,26 @@ export const api = {
   setTheme: (token: string, theme: "light" | "dark" | "system") =>
     request<MeUser>("/me", { method: "PATCH", token, body: { theme } }),
 
-  updateMe: (token: string, input: { theme?: "light" | "dark" | "system"; neon?: boolean }) =>
+  updateMe: (token: string, input: { theme?: "light" | "dark" | "system"; neon?: boolean; displayName?: string }) =>
     request<MeUser>("/me", { method: "PATCH", token, body: input }),
+
+  uploadAvatar: (token: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<{ hasAvatar: boolean }>("/me/avatar", { method: "POST", token, form });
+  },
+
+  deleteAvatar: (token: string) =>
+    request<{ hasAvatar: boolean }>("/me/avatar", { method: "DELETE", token }),
+
+  /** A colleague's profile picture, fetched with the bearer token. */
+  avatarBlob: async (token: string, userId: string): Promise<Blob> => {
+    const res = await fetch(`${API_BASE}/users/${userId}/avatar`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new ApiError(res.status, `no avatar (HTTP ${res.status})`);
+    return res.blob();
+  },
 
   setLlmKeyEnabled: (token: string, orgId: string, keyId: string, enabled: boolean) =>
     request<{ id: string; enabled: boolean }>(`/orgs/${orgId}/llm-keys/${keyId}`, {

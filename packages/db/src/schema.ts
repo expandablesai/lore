@@ -91,6 +91,10 @@ export const users = pgTable("users", {
   status: userStatus("status").notNull().default("active"),
   theme: text("theme").notNull().default("system"),
   neon: boolean("neon").notNull().default(false),
+  // Profile picture: the stored blob key and its mime, both null until one is
+  // uploaded. Kept out of the session payload; the console fetches the bytes.
+  avatarKey: text("avatar_key"),
+  avatarMime: text("avatar_mime"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [check("theme_enum", sql`${t.theme} IN ('light','dark','system')`)]);
 

@@ -7,6 +7,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
 import { api } from "../lib/api";
+import { useAuth } from "../lib/auth";
+import { Avatar, BrainMark } from "../components/Brand";
 import type { ChatImage, ChatMessage } from "../lib/types";
 import { Button, ErrorNote, StatusLine, errMessage, type ViewProps } from "./common";
 import { DownloadAllButton, ImageThumb, ImageViewer } from "./ImageViewer";
@@ -33,7 +35,8 @@ function announceHistoryChange() {
   window.dispatchEvent(new Event("lore:chats-changed"));
 }
 
-export function Chat({ token, chatId, navigate }: ViewProps & { chatId?: string }) {
+export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: string }) {
+  const { me } = useAuth();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -148,18 +151,22 @@ export function Chat({ token, chatId, navigate }: ViewProps & { chatId?: string 
 
           {turns.map((turn, index) =>
             turn.role === "user" ? (
-              <div key={index} className="rise flex justify-end">
+              <div key={index} className="rise flex items-end justify-end gap-2">
                 <div className="bubble-user max-w-[85%] rounded-3xl rounded-br-lg px-4 py-2.5 text-sm text-white shadow-lg shadow-sky-500/20 [background:var(--bubble-user)]">
                   {turn.content}
                 </div>
+                <Avatar
+                  token={token}
+                  userId={user.id}
+                  hasAvatar={Boolean(me?.hasAvatar)}
+                  name={user.displayName}
+                  size={28}
+                />
               </div>
             ) : (
               <article key={index} className="rise flex gap-3">
-                <span
-                  aria-hidden="true"
-                  className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-slate-800/80 text-[10px] font-semibold text-slate-300 backdrop-blur"
-                >
-                  LORE
+                <span className="mt-0.5 shrink-0">
+                  <BrainMark size={28} />
                 </span>
                 <div className="min-w-0 flex-1 space-y-3">
                   <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-200">
@@ -187,9 +194,7 @@ export function Chat({ token, chatId, navigate }: ViewProps & { chatId?: string 
 
           {sending && (
             <div className="flex gap-3">
-              <span className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-slate-800/80 text-[10px] font-semibold text-slate-300">
-                LORE
-              </span>
+              <BrainMark size={28} />
               <p className="text-sm text-slate-400">Thinking…</p>
             </div>
           )}

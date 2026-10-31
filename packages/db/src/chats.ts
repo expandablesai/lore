@@ -178,3 +178,31 @@ export async function setUserTheme(
 export async function setUserNeon(db: Db, userId: string, neon: boolean): Promise<void> {
   await db.update(users).set({ neon }).where(eq(users.id, userId));
 }
+
+/** Store the blob key of a freshly uploaded profile picture. */
+export async function setUserAvatar(
+  db: Db,
+  userId: string,
+  avatarKey: string,
+  avatarMime: string,
+): Promise<void> {
+  await db.update(users).set({ avatarKey, avatarMime }).where(eq(users.id, userId));
+}
+
+/** Remove the profile picture reference (the blob stays until it is replaced). */
+export async function clearUserAvatar(db: Db, userId: string): Promise<void> {
+  await db.update(users).set({ avatarKey: null, avatarMime: null }).where(eq(users.id, userId));
+}
+
+/** The avatar descriptor for one user, for the authenticated image route. */
+export async function getUserAvatar(
+  db: Db,
+  userId: string,
+): Promise<{ orgId: string; avatarKey: string | null; avatarMime: string | null } | null> {
+  const rows = await db
+    .select({ orgId: users.orgId, avatarKey: users.avatarKey, avatarMime: users.avatarMime })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return rows[0] ?? null;
+}

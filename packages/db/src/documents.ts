@@ -7,7 +7,7 @@
 
 import { eq, and, inArray, sql } from "drizzle-orm";
 import type { Db } from "./client.js";
-import { documents, chunks, embeddings } from "./schema.js";
+import { documents, chunks, embeddings, users } from "./schema.js";
 
 /** Insert a new document row (status defaults to 'queued'). */
 export async function insertDocument(
@@ -16,6 +16,7 @@ export async function insertDocument(
     orgId: string;
     projectId: string | null;
     ownerUserId: string | null;
+    uploadedBy?: string | null;
     scope: "personal" | "project" | "org";
     filename: string;
     mime: string;
@@ -26,7 +27,7 @@ export async function insertDocument(
 ): Promise<{ id: string }> {
   const rows = await db
     .insert(documents)
-    .values(values)
+    .values({ ...values, uploadedBy: values.uploadedBy ?? values.ownerUserId })
     .returning({ id: documents.id });
   const doc = rows[0];
   if (!doc) throw new Error("document insert failed");
@@ -95,6 +96,10 @@ export async function getDocument(
   status: string;
   pageCount: number | null;
   error: string | null;
+  createdAt: Date;
+  extractedAt: Date | null;
+  uploadedByName: string | null;
+  chunkCount: number;
 } | null> {
   const rows = await db
     .select({
@@ -109,11 +114,21 @@ export async function getDocument(
       status: documents.status,
       pageCount: documents.pageCount,
       error: documents.error,
+      createdAt: documents.createdAt,
+      extractedAt: documents.extractedAt,
+      uploadedByName: users.displayName,
     })
     .from(documents)
+    .leftJoin(users, eq(users.id, documents.uploadedBy))
     .where(eq(documents.id, id))
     .limit(1);
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (!row) return null;
+  const counted = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(chunks)
+    .where(eq(chunks.documentId, id));
+  return { ...row, chunkCount: counted[0]?.total ?? 0 };
 }
 
 /** Update document status (and optionally pageCount, error, extractedAt). */
@@ -147,8 +162,10 @@ export async function listDocuments(
   pageCount: number | null;
   error: string | null;
   createdAt: Date;
+  uploadedByName: string | null;
+  chunkCount: number;
 }>> {
-  return db
+  const rows = await db
     .select({
       id: documents.id,
       filename: documents.filename,
@@ -158,12 +175,30 @@ export async function listDocuments(
       pageCount: documents.pageCount,
       error: documents.error,
       createdAt: documents.createdAt,
+      uploadedByName: users.displayName,
     })
     .from(documents)
+    .leftJoin(users, eq(users.id, documents.uploadedBy))
     .where(eq(documents.orgId, orgId))
     .orderBy(sql`${documents.createdAt} DESC`)
     .limit(limit)
     .offset(offset);
+
+  if (rows.length === 0) return [];
+  // Counted in its own query: a column interpolated into a correlated subquery
+  // renders unqualified, binds to the subquery's table and silently counts 0.
+  const counts = await db
+    .select({ documentId: chunks.documentId, total: sql<number>`count(*)::int` })
+    .from(chunks)
+    .where(
+      inArray(
+        chunks.documentId,
+        rows.map((r) => r.id),
+      ),
+    )
+    .groupBy(chunks.documentId);
+  const byDocument = new Map(counts.map((c) => [c.documentId, c.total]));
+  return rows.map((row) => ({ ...row, chunkCount: byDocument.get(row.id) ?? 0 }));
 }
 
 /** Insert chunks for a document. */

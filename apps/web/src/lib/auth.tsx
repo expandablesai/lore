@@ -4,15 +4,19 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { api, type SignupInput } from "./api";
-import type { AuthUser } from "./types";
+import type { AuthUser, MeUser } from "./types";
 import { clearToken, loadToken, saveToken } from "./session";
 
 export interface AuthState {
   user: AuthUser | null;
+  /** The fuller profile (theme, neon, avatar) once it has been fetched. */
+  me: MeUser | null;
   token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (input: SignupInput) => Promise<void>;
+  /** Re-read /me after changing a preference or the profile picture. */
+  refreshMe: () => Promise<void>;
   logout: () => void;
 }
 
@@ -20,8 +24,18 @@ const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [me, setMe] = useState<MeUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const refreshMe = useCallback(async () => {
+    if (!token) return;
+    try {
+      setMe(await api.me(token));
+    } catch {
+      // a stale session is handled by the gate; nothing to do here
+    }
+  }, [token]);
 
   useEffect(() => {
     const stored = loadToken();
@@ -36,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!active) return;
         setUser(res.user);
         setToken(stored);
+        void api.me(stored).then(setMe).catch(() => setMe(null));
       })
       .catch(() => {
         if (!active) return;
@@ -67,11 +82,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearToken();
     setToken(null);
     setUser(null);
+    setMe(null);
   }, []);
 
   const value = useMemo(
-    () => ({ user, token, loading, login, signup, logout }),
-    [user, token, loading, login, signup, logout],
+    () => ({ user, me, token, loading, login, signup, refreshMe, logout }),
+    [user, me, token, loading, login, signup, refreshMe, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -30,6 +30,7 @@ export interface MeUser {
   status: UserStatus;
   theme?: "light" | "dark" | "system";
   neon?: boolean;
+  hasAvatar?: boolean;
 }
 
 /** A saved conversation in the sidebar. */
@@ -88,6 +89,9 @@ export interface DocumentSummary {
   pageCount: number | null;
   error: string | null;
   createdAt: string;
+  extractedAt: string | null;
+  uploadedByName: string | null;
+  chunkCount: number;
 }
 
 export interface DocumentDetail {
@@ -102,6 +106,10 @@ export interface DocumentDetail {
   status: DocumentStatus;
   pageCount: number | null;
   error: string | null;
+  createdAt: string;
+  extractedAt: string | null;
+  uploadedByName: string | null;
+  chunkCount: number;
 }
 
 export interface Chunk {

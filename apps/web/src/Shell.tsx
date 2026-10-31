@@ -10,6 +10,9 @@ import { useNav } from "./lib/nav";
 import { useTheme, type Theme } from "./lib/theme";
 import type { ChatSummary } from "./lib/types";
 import { Chat } from "./views/Chat";
+import { Capture } from "./views/Capture";
+import { Profile } from "./views/Profile";
+import { Avatar, BrainMark } from "./components/Brand";
 import { Dashboard } from "./views/Dashboard";
 import { DocumentDetail } from "./views/DocumentDetail";
 import { Documents } from "./views/Documents";
@@ -21,10 +24,12 @@ import { Button, type ViewProps } from "./views/common";
 const NAV: { label: string; path: string; adminOnly?: boolean }[] = [
   { label: "Dashboard", path: "/" },
   { label: "Chat", path: "/chat" },
+  { label: "Paste", path: "/capture" },
   { label: "Documents", path: "/documents" },
   { label: "Memory", path: "/memory" },
   { label: "Members", path: "/members" },
   { label: "LLM Keys", path: "/llm-keys", adminOnly: true },
+  { label: "Profile", path: "/profile" },
 ];
 
 const THEMES: { value: Theme; label: string }[] = [
@@ -81,7 +86,7 @@ function ChatRow({
 }
 
 export function Shell() {
-  const { user, token, logout } = useAuth();
+  const { user, me, token, logout } = useAuth();
   const { path, navigate } = useNav();
   const { theme, setTheme, neon, setNeon } = useTheme();
   const [chats, setChats] = useState<ChatSummary[]>([]);
@@ -118,6 +123,8 @@ export function Shell() {
   else if (path === "/documents") view = <Documents {...viewProps} />;
   else if (path.startsWith("/documents/"))
     view = <DocumentDetail {...viewProps} id={decodeURIComponent(path.slice("/documents/".length))} />;
+  else if (path === "/capture") view = <Capture {...viewProps} />;
+  else if (path === "/profile") view = <Profile {...viewProps} />;
   else if (path === "/memory") view = <Memory {...viewProps} />;
   else if (path === "/members") view = <Members {...viewProps} />;
   else if (path === "/llm-keys") view = <LlmKeys {...viewProps} />;
@@ -136,9 +143,12 @@ export function Shell() {
   const sidebar = (
     <aside className="glass neon-frame flex w-72 shrink-0 flex-col gap-5 rounded-3xl p-4">
       <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-semibold tracking-tight text-slate-100">EXPANDABLES LORE</p>
-          <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Memory OS</p>
+        <div className="flex items-center gap-2.5">
+          <BrainMark size={34} />
+          <div>
+            <p className="text-sm font-semibold tracking-tight text-slate-100">EXPANDABLES LORE</p>
+            <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Memory OS</p>
+          </div>
         </div>
         <button
           type="button"
@@ -243,13 +253,26 @@ export function Shell() {
             />
           </span>
         </button>
-        <div>
-          <p className="truncate text-sm text-slate-300">{user.displayName}</p>
-          <p className="mb-2 truncate text-xs text-slate-500">{user.email}</p>
-          <Button variant="quiet" className="w-full justify-start px-3" onClick={logout}>
-            Sign out
-          </Button>
-        </div>
+        <button
+          type="button"
+          onClick={() => navigate("/profile")}
+          className="flex w-full items-center gap-2.5 rounded-2xl px-2 py-2 text-left transition hover:bg-slate-800/40"
+        >
+          <Avatar
+            token={token}
+            userId={user.id}
+            hasAvatar={Boolean(me?.hasAvatar)}
+            name={user.displayName}
+            size={32}
+          />
+          <span className="min-w-0">
+            <span className="block truncate text-sm text-slate-300">{user.displayName}</span>
+            <span className="block truncate text-xs text-slate-500">{user.email}</span>
+          </span>
+        </button>
+        <Button variant="quiet" className="w-full justify-start px-3" onClick={logout}>
+          Sign out
+        </Button>
       </div>
     </aside>
   );

@@ -64,6 +64,13 @@
       "when": 1793457686465,
       "tag": "0008_magical_sage",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793458266795,
+      "tag": "0009_common_lord_tyger",
+      "breakpoints": true
     }
   ]
 }

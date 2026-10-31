@@ -10,6 +10,20 @@ import { installFetchMock, jsonResponse } from "../test/fetchMock";
 
 const user: AuthUser = { id: "u1", orgId: "o1", email: "a@b.c", displayName: "Ada", role: "org_admin" };
 
+// The view reads the signed-in profile from AuthProvider (for the avatar).
+vi.mock("../lib/auth", () => ({
+  useAuth: () => ({
+    user,
+    me: { ...user, status: "active", hasAvatar: false },
+    token: "t",
+    loading: false,
+    login: vi.fn(),
+    signup: vi.fn(),
+    refreshMe: vi.fn(async () => {}),
+    logout: vi.fn(),
+  }),
+}));
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -183,6 +197,6 @@ describe("Chat images", () => {
     await userEvent.type(screen.getByLabelText("Message"), "who is Chen Lian{Enter}");
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.getByText("Nothing visual here.")).toBeInTheDocument());
-    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    // The brain mark is an <img> too; assert on attachments specifically.\n    expect(screen.queryByAltText(/\\.png$/)).not.toBeInTheDocument();
   });
 });

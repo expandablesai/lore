@@ -81,6 +81,26 @@ export function DocumentDetail({ token, id, navigate }: ViewProps & { id: string
                 <dt className="text-slate-500">SHA-256</dt>
                 <dd className="mt-0.5 truncate font-mono text-xs text-slate-300">{state.document.sha256}</dd>
               </div>
+              <div>
+                <dt className="text-slate-500">Chunks</dt>
+                <dd className="mt-0.5 text-slate-200">{state.document.chunkCount}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Saved</dt>
+                <dd className="mt-0.5 text-slate-200">
+                  {new Date(state.document.createdAt).toLocaleString()}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Indexed</dt>
+                <dd className="mt-0.5 text-slate-200">
+                  {state.document.extractedAt ? new Date(state.document.extractedAt).toLocaleString() : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Uploaded by</dt>
+                <dd className="mt-0.5 text-slate-200">{state.document.uploadedByName ?? "—"}</dd>
+              </div>
             </dl>
             {state.document.error && (
               <div className="mt-4">

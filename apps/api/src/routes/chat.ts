@@ -277,7 +277,7 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
             ...messages,
           ],
         });
-        const upstream = res.choices[0]?.message;
+        let upstream = res.choices[0]?.message;
         if ((upstream?.content ?? "").trim() === "") {
           // An empty answer is otherwise indistinguishable from "nothing to say",
           // and the difference decides the fix (a token budget, a reasoning
@@ -292,14 +292,33 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
             },
             "chat provider returned an empty answer",
           );
+          // One retry without the retrieved context: this model returns empty
+          // text on some long, multi-part prompts, and the question alone is
+          // usually answerable. A short answer beats a blank bubble.
+          try {
+            const retry = await adapter.chatCompletions({
+              model: chatKey.chatModel,
+              max_tokens: 512,
+              messages: [
+                { role: "system", content: "Answer the user's question directly, in a few sentences." },
+                ...messages,
+              ],
+            });
+            if ((retry.choices[0]?.message?.content ?? "").trim() !== "") {
+              upstream = retry.choices[0]?.message;
+            }
+          } catch {
+            // The retry is best-effort; fall through to the honest message.
+          }
         }
         // A provider can return no text at all, and a blank bubble with no
-        // explanation reads as a broken app. Say what happened instead.
+        // explanation reads as a broken app. Say which model went quiet, so the
+        // next step (retry, or switch the chat key) is clear.
         const content =
           upstream?.content?.trim() ||
           (images.length > 0
             ? "No text came back with these images."
-            : "The model returned no answer for that. Try rephrasing the question.");
+            : `"${chatKey.chatModel}" returned no answer for that question. Try again, or switch the chat key in LLM Keys.`);
         const message = { role: "assistant" as const, content };
 
         // Record the turn only once it is complete: a question whose answer

@@ -113,6 +113,41 @@ describe("Chat images", () => {
     expect(screen.getByText("Here is the portfolio.")).toBeInTheDocument();
   });
 
+  it("drops markdown image links from the reply text", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/api/chat")) {
+        return {
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          text: async () =>
+            JSON.stringify({
+              message: {
+                role: "assistant",
+                content: "Here is the check image:\n\n![vision-check.png](vision-check.png)",
+              },
+              images: [{ documentId: "d1", filename: "vision-check.png", mime: "image/png" }],
+            }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        blob: async () => new Blob(["png"], { type: "image/png" }),
+      } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<Chat token="t" user={user} navigate={vi.fn()} />);
+    await userEvent.type(screen.getByLabelText("Message"), "show me the check image{Enter}");
+
+    await waitFor(() => expect(screen.getByAltText("vision-check.png")).toBeInTheDocument());
+    expect(screen.getByText("Here is the check image:")).toBeInTheDocument();
+    expect(screen.queryByText(/!\[/)).not.toBeInTheDocument();
+  });
+
   it("shows no image strip when the reply has none", async () => {
     const fetchMock = installFetchMock({ "/api/chat": reply("Nothing visual here.") });
     render(<Chat token="t" user={user} navigate={vi.fn()} />);

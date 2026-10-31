@@ -18,6 +18,18 @@ interface Turn extends ChatMessage {
   images?: ChatImage[];
 }
 
+/**
+ * The reply text without image markdown.
+ *
+ * Told that an image is on screen, a model tends to add `![name](name)` to its
+ * answer. The console renders that as literal characters next to the picture it
+ * is actually showing, so the link is dropped and the attachment speaks for it.
+ */
+function visibleText(turn: Turn): string {
+  if (turn.role !== "assistant") return turn.content;
+  return turn.content.replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 /** An image attachment: fetch its bytes, show them, release the object URL. */
 function Attachment({ token, image }: { token: string; image: ChatImage }) {
   const [url, setUrl] = useState<string | null>(null);
@@ -130,7 +142,7 @@ export function Chat({ token }: ViewProps) {
                         : "rounded-2xl bg-slate-800 px-4 py-2 text-sm text-slate-100"
                     }
                   >
-                    {turn.content}
+                    {visibleText(turn)}
                   </div>
                   {(turn.images ?? []).map((image) => (
                     <Attachment key={image.documentId} token={token} image={image} />

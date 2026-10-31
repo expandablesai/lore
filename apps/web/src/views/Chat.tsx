@@ -5,10 +5,12 @@
 // it appears in the sidebar immediately. Enter sends, Shift+Enter adds a line,
 // and an in-progress IME composition keeps its Enter.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { cn } from "@lore/ui";
 import type { FormEvent, KeyboardEvent } from "react";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useI18n } from "../lib/i18n";
+import { formatWhen } from "../lib/time";
 import { Avatar, BrainMark } from "../components/Brand";
 import type { ChatImage, ChatMessage } from "../lib/types";
 import { Button, ErrorNote, StatusLine, errMessage, type ViewProps } from "./common";
@@ -43,6 +45,74 @@ function announceHistoryChange() {
   window.dispatchEvent(new Event("lore:chats-changed"));
 }
 
+/** Clipboard glyph, drawn rather than shipped as an icon font. */
+function CopyIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="7.5" y="7.5" width="8.5" height="8.5" rx="2" />
+      <path d="M13 7.5V5.75A1.75 1.75 0 0 0 11.25 4h-6.5A1.75 1.75 0 0 0 3 5.75v6.5A1.75 1.75 0 0 0 4.75 14H7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/**
+ * The line under a message: when it was said, and one click to copy it.
+ *
+ * Both are per message rather than per conversation, because "when did the
+ * model say that" is a different question from "when did this chat start" — and
+ * copying an answer is the most common thing anyone does with one.
+ */
+function MessageMeta({ turn, align }: { turn: Turn; align: "start" | "end" }) {
+  const { t, locale } = useI18n();
+  const [copied, setCopied] = useState(false);
+  const when = formatWhen(turn.at, locale, t);
+
+  const copy = useCallback(async () => {
+    const text = turn.content;
+    if (text === "") return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Older browsers and non-secure origins have no clipboard API; a
+      // selection-based copy still works there.
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      try {
+        document.execCommand("copy");
+      } finally {
+        area.remove();
+      }
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
+  }, [turn.content]);
+
+  if (when === "" && turn.content === "") return null;
+
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-1 text-[11px] text-slate-500",
+        align === "end" ? "justify-end" : "justify-start",
+      )}
+    >
+      {when !== "" && <span className="select-none">{when}</span>}
+      <button
+        type="button"
+        onClick={() => void copy()}
+        aria-label={copied ? t("Copied") : t("Copy message")}
+        title={copied ? t("Copied") : t("Copy message")}
+        className="rounded-md p-1 text-slate-500 transition hover:bg-slate-800/60 hover:text-slate-200"
+      >
+        {copied ? <span className="text-emerald-300/90">{t("Copied")}</span> : <CopyIcon />}
+      </button>
+    </div>
+  );
+}
 export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: string }) {
   const { me } = useAuth();
   const { t } = useI18n();
@@ -81,7 +151,7 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
       .then((res) => {
         if (!active) return;
         setTurns(
-          res.messages.map((m) => ({ role: m.role, content: m.content, images: m.images })),
+          res.messages.map((m) => ({ role: m.role, content: m.content, images: m.images, at: m.createdAt })),
         );
       })
       .catch((e: unknown) => {
@@ -99,7 +169,7 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
     const text = draft.trim();
     if (!text || sending) return;
     const askedIn = chatId;
-    const asked: Turn[] = [...turns, { role: "user", content: text }];
+    const asked: Turn[] = [...turns, { role: "user", content: text, at: new Date().toISOString() }];
     setTurns(asked);
     setDraft("");
     setSending(true);
@@ -113,10 +183,20 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
       // Asked in one conversation, answered after the user opened another: drop
       // the reply instead of appending it to someone else's transcript.
       if (shown.current !== askedIn) return;
-      setTurns((prev) => [
-        ...prev,
-        { role: res.message.role, content: res.message.content, images: res.images ?? [] },
-      ]);
+      setTurns((prev) => {
+        const stamped = prev.map((turn, index) =>
+          index === asked.length - 1 ? { ...turn, at: res.userAt ?? turn.at } : turn,
+        );
+        return [
+          ...stamped,
+          {
+            role: res.message.role,
+            content: res.message.content,
+            images: res.images ?? [],
+            at: res.message.at,
+          },
+        ];
+      });
       announceHistoryChange();
       // The first turn created the thread: put its id in the route so the
       // sidebar entry and a reload both point at the conversation.
@@ -190,17 +270,22 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
 
           {turns.map((turn, index) =>
             turn.role === "user" ? (
-              <div key={index} className="rise flex items-end justify-end gap-2">
-                <div className="bubble-user max-w-[85%] rounded-3xl rounded-br-lg px-4 py-2.5 text-sm text-white shadow-lg shadow-sky-500/20 [background:var(--bubble-user)]">
-                  {turn.content}
+              <div key={index} className="rise flex flex-col items-end">
+                <div className="flex items-end justify-end gap-2">
+                  <div className="bubble-user max-w-[85%] rounded-3xl rounded-br-lg px-4 py-2.5 text-sm text-white shadow-lg shadow-sky-500/20 [background:var(--bubble-user)]">
+                    {turn.content}
+                  </div>
+                  <Avatar
+                    token={token}
+                    userId={user.id}
+                    hasAvatar={Boolean(me?.hasAvatar)}
+                    name={user.displayName}
+                    size={28}
+                  />
                 </div>
-                <Avatar
-                  token={token}
-                  userId={user.id}
-                  hasAvatar={Boolean(me?.hasAvatar)}
-                  name={user.displayName}
-                  size={28}
-                />
+                <div className="pr-9">
+                  <MessageMeta turn={turn} align="end" />
+                </div>
               </div>
             ) : (
               <article key={index} className="rise flex gap-3">
@@ -226,6 +311,7 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
                       <DownloadAllButton token={token} images={turn.images ?? []} />
                     </>
                   )}
+                  <MessageMeta turn={turn} align="start" />
                 </div>
               </article>
             ),

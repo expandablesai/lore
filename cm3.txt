@@ -1,0 +1,10 @@
+lore: every message says when it was said, and copies in one click
+
+- appendMessage returns the stored timestamp, and /chat echoes both the question
+  and the answer stamp, so a live turn is labelled exactly like a reloaded one
+- the transcript shows "<day> at <time>" under each message, localised through
+  the interface language (date and time formatted by Intl, joined by a
+  translated connector)
+- a copy button under every message writes the text to the clipboard, with a
+  selection-based fallback for browsers without the clipboard API, and a short
+  "Copied" confirmation

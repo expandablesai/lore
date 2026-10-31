@@ -247,3 +247,49 @@ describe("Chat images", () => {
     await waitFor(() => expect(screen.queryByText(/belonged to chat A/)).not.toBeInTheDocument());
   });
 });
+
+describe("Chat message metadata", () => {
+  it("labels a stored message with its time and copies it on click", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window.navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    installFetchMock({
+      "/api/chats/abc": jsonResponse(200, {
+        chat: { id: "abc", title: "Saved", updatedAt: "2026-10-15T20:23:00.000Z" },
+        messages: [
+          {
+            id: "m1",
+            role: "user",
+            content: "who is Li Wei's mother?",
+            images: [],
+            createdAt: "2026-10-15T20:22:00.000Z",
+          },
+          {
+            id: "m2",
+            role: "assistant",
+            content: "Chen Lian is Li Wei's mother.",
+            images: [],
+            createdAt: "2026-10-15T20:23:00.000Z",
+          },
+        ],
+      }),
+    });
+
+    render(<Chat token="t" user={user} chatId="abc" navigate={vi.fn()} />);
+
+    // Both the question and the answer carry a timestamp; the label reads
+    // "<day> at <time>" in English.
+    await screen.findByText("Chen Lian is Li Wei's mother.");
+    const stamps = screen.getAllByText(/ at /);
+    expect(stamps.length).toBe(2);
+
+    const copyButtons = screen.getAllByRole("button", { name: "Copy message" });
+    expect(copyButtons).toHaveLength(2);
+
+    await userEvent.click(copyButtons[1]!);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("Chen Lian is Li Wei's mother."));
+    expect(await screen.findByText("Copied")).toBeInTheDocument();
+  });
+});

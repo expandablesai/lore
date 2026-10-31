@@ -550,8 +550,13 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
 
         // Record the turn only once it is complete: a question whose answer
         // never arrived is not history worth reloading.
-        await appendMessage(db, { chatId, orgId: user.orgId, role: "user", content: question });
-        await appendMessage(db, {
+        const asked = await appendMessage(db, {
+          chatId,
+          orgId: user.orgId,
+          role: "user",
+          content: question,
+        });
+        const replied = await appendMessage(db, {
           chatId,
           orgId: user.orgId,
           role: "assistant",
@@ -559,7 +564,12 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
           images,
         });
 
-        return { chatId, message, images };
+        return {
+          chatId,
+          message: { ...message, at: (replied?.createdAt ?? new Date()).toISOString() },
+          userAt: (asked?.createdAt ?? new Date()).toISOString(),
+          images,
+        };
       },
     );
   };

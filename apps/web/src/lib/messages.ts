@@ -10,6 +10,9 @@ import type { Locale } from "@lore/core/locales";
 type Dict = Record<string, string>;
 
 const hi: Dict = {
+  "{date} at {time}": "{date}, {time}",
+  "Copy message": "संदेश कॉपी करें",
+  Copied: "कॉपी हो गया",
   "Change password": "पासवर्ड बदलें",
   "Current password": "वर्तमान पासवर्ड",
   "New password": "नया पासवर्ड",
@@ -175,6 +178,9 @@ const hi: Dict = {
 };
 
 const zh: Dict = {
+  "{date} at {time}": "{date} {time}",
+  "Copy message": "复制消息",
+  Copied: "已复制",
   "Change password": "修改密码",
   "Current password": "当前密码",
   "New password": "新密码",

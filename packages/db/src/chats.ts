@@ -154,15 +154,21 @@ export async function appendMessage(
     content: string;
     images?: ChatImageRef[];
   },
-): Promise<void> {
-  await db.insert(chatMessages).values({
-    chatId: input.chatId,
-    orgId: input.orgId,
-    role: input.role,
-    content: input.content,
-    images: input.images ?? [],
-  });
+): Promise<{ createdAt: Date } | null> {
+  // The timestamp comes back so a live turn can be labelled exactly like a
+  // reloaded one — the console never has to guess the server's clock.
+  const inserted = await db
+    .insert(chatMessages)
+    .values({
+      chatId: input.chatId,
+      orgId: input.orgId,
+      role: input.role,
+      content: input.content,
+      images: input.images ?? [],
+    })
+    .returning({ createdAt: chatMessages.createdAt });
   await db.update(chats).set({ updatedAt: new Date() }).where(eq(chats.id, input.chatId));
+  return inserted[0] ?? null;
 }
 
 /** Persist the reader's theme choice so it follows them to another browser. */

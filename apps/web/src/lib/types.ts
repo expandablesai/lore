@@ -175,6 +175,8 @@ export interface OrgLlmKey {
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
+  /** ISO timestamp shown beside the message. */
+  at?: string;
 }
 
 /** An image the reply rests on; the console fetches its bytes itself. */
@@ -189,6 +191,8 @@ export interface ChatInput {
 }
 
 export interface ChatReply {
-  message: { role: "assistant"; content: string };
+  message: { role: "assistant"; content: string; at?: string };
+  /** When the question was stored, so the live turn matches a reloaded one. */
+  userAt?: string;
   images?: ChatImage[];
 }

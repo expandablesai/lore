@@ -287,8 +287,9 @@ d3fde22 retry a silent provider once, and name the model that went quiet
 - The deployment runs a single worker; multi-worker claim semantics have not been
   exercised.
 - The M2/M4 "compiler" idea (a context compiler benchmarked against naive top-k)
-  and M7 backup/restore/doctor have not been built the way the plan described;
-  the shipped system retrieves directly.
+  has not been built the way the plan described; the shipped system retrieves
+  directly. **M7 backup/restore/doctor is now built** — `scripts/ops/{doctor,
+  backup,restore,repair}.sh` and `docs/OPERATIONS.md`, see §13.
 
 ## 8. Operating rules that must not be broken
 
@@ -402,3 +403,33 @@ worker at a time (`FOR UPDATE SKIP LOCKED` under the hood), and the reaper reads
 the same queue state rather than guessing, so N workers and one worker behave the
 same way. What is still unexercised in production is running more than one worker
 replica — the deployment runs one.
+
+## 13. Operations: doctor, backup, restore, repair (§M7)
+
+The plan's last "not built" item was M7. It exists now, as four scripts plus a
+runbook (`docs/OPERATIONS.md`), and all four have been run against the real
+installation.
+
+| Script | What it is for |
+| --- | --- |
+| `scripts/ops/doctor.sh` | Read-only. Answers "is this installation telling readers something untrue?" — 26 checks across stack, API probes, database/migrations/RLS, key material, the embedding space, documents, blobs, backups, disk, the published console, and the lock. `FAIL` exits 1. |
+| `scripts/ops/backup.sh` | One directory per run: `db.dump` (`pg_dump -Fc`), `db.toc` (a `pg_restore --list` proving the dump can be read), `blobs.tar.gz`, and a `manifest.txt` with row counts, the git commit and sha256 of both files. Retention `KEEP=7`. |
+| `scripts/ops/restore.sh` | Replays a backup into a named database. Refuses the live database without `--force`, prints counts before and after, optionally extracts blobs elsewhere. |
+| `scripts/ops/repair.sh` | Dry run by default. Deletes orphan vectors, and re-processes documents stranded in an old embedding space **through the product's own reprocess endpoint** (minting and then revoking a 30-minute session) rather than writing vectors by hand. |
+
+Two details worth keeping:
+
+- The doctor remembers a **fingerprint of `LORE_ENCRYPTION_KEY`** in
+  `/var/lib/lore/doctor-key-fingerprint` and fails if it changes, because rotating
+  that key silently makes every stored provider key unreadable. It does not claim
+  to prove decryption — only the shape of the ciphertext — and the runbook says so.
+- The embedding-space check is **per org**, not global: two orgs may legitimately
+  use different models, but a second model inside one org produces vectors no
+  query can be compared with.
+
+Verified on the live installation: doctor `26 passed, 0 warning(s), 0 failed`;
+backup `2026-10-31T165956Z` (368K dump, 16M blobs) with `sha256sum -c` OK on both
+files; a restore drill into a throwaway `lore_restore` database reproduced the
+manifest exactly (20 documents, 78 chunks, 79 embeddings, 16 users, 17 keys).
+The doctor's first run found a real orphan vector and an over-broad model check;
+both were fixed (`repair.sh --apply`, and the check now compares models per org).

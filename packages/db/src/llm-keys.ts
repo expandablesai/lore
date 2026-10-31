@@ -168,6 +168,31 @@ export function pickEmbedKey(keys: RevealedKey[], storedModel: string | null): R
   return keys.find((key) => canEmbedKey(key)) ?? null;
 }
 
+/**
+ * The order in which to try keys when *writing* vectors.
+ *
+ * `canEmbedKey` reads configuration, not capability: DeepSeek serves chat but
+ * no `/v1/embeddings`, and a key configured with an embedding model it cannot
+ * serve looks embeddable. Ingestion therefore tries the key that matches the
+ * stored space first and the remaining ones after it, so one misconfigured key
+ * cannot block indexing that another key could have done.
+ *
+ * `matched` is reported separately: when the org already has vectors, indexing
+ * into any other space would make them incomparable, and the caller must refuse
+ * rather than silently re-space the org.
+ */
+export function orderEmbedKeys(
+  keys: RevealedKey[],
+  storedModel: string | null,
+): { matched: RevealedKey | null; candidates: RevealedKey[] } {
+  const embeddable = keys.filter((key) => canEmbedKey(key));
+  const matched = storedModel
+    ? (embeddable.find((key) => key.embedModel === storedModel) ?? null)
+    : null;
+  const rest = embeddable.filter((key) => key !== matched);
+  return { matched, candidates: matched ? [matched, ...rest] : rest };
+}
+
 /** Whether a revealed key can produce real embeddings (chat-only providers cannot). */
 export function canEmbedKey(key: RevealedKey | null): boolean {
   return key !== null && key.apiType !== "anthropic" && key.embedModel !== "";

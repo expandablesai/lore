@@ -2,13 +2,12 @@ import { PgBoss } from "pg-boss";
 import { readFile } from "node:fs/promises";
 import { createDb } from "@lore/db";
 import {
-  canEmbedKey,
   dominantEmbeddingModel,
   updateDocumentStatus,
   insertChunks,
   insertEmbeddings,
   deleteDocumentDerived,
-  pickEmbedKey,
+  orderEmbedKeys,
   revealActiveLlmKeys,
   JOB_DOCUMENT_INGEST,
   JOB_DOCUMENT_REPROCESS,
@@ -77,19 +76,52 @@ async function ingestDocument(
 
     const keys = await revealActiveLlmKeys(db, orgId);
     const storedModel = await dominantEmbeddingModel(db, orgId);
-    const key = pickEmbedKey(keys, storedModel);
-    if (key && canEmbedKey(key)) {
-      const embedder = createOpenAIEmbedder({ apiKey: key.apiKey, baseUrl: key.baseUrl });
-      const vecs = await embedder.embed(storedChunks.map((c) => c.text), key.embedModel);
+    const { matched, candidates } = orderEmbedKeys(keys, storedModel);
+
+    // Existing vectors pin the org to one embedding space; a key that cannot
+    // reproduce it would add vectors nothing can be compared against.
+    if (storedModel && !matched) {
+      throw new Error(
+        `no active key can embed with "${storedModel}", the model this org's vectors were indexed with — add a key using that model`,
+      );
+    }
+
+    let embedded: { model: string; dim: number; vecs: Float32Array[] } | null = null;
+    let embedError: unknown = null;
+    for (const candidate of candidates) {
+      try {
+        const vecs = await createOpenAIEmbedder({
+          apiKey: candidate.apiKey,
+          baseUrl: candidate.baseUrl,
+        }).embed(storedChunks.map((c) => c.text), candidate.embedModel);
+        embedded = { model: candidate.embedModel, dim: candidate.embedDim, vecs };
+        break;
+      } catch (error) {
+        // Configured-for-embedding but refuses the call (no /v1/embeddings,
+        // wrong model name, unreachable host): try the next active key.
+        embedError = error;
+        console.warn(
+          `embedding via ${candidate.baseUrl} (${candidate.embedModel}) failed:`,
+          error instanceof Error ? error.message : error,
+        );
+      }
+    }
+    if (candidates.length > 0 && !embedded) {
+      throw embedError instanceof Error ? embedError : new Error("every embedding key failed");
+    }
+
+    if (embedded) {
       for (let i = 0; i < storedChunks.length; i++) {
         const chunk = storedChunks[i];
         if (!chunk) continue;
         embeddingRows.push({
           entityType: "chunk",
           entityId: chunk.id,
-          model: key.embedModel,
-          dim: key.embedDim,
-          vec: vectorToPgText(zeroPad(vecs[i] ?? new Float32Array(key.embedDim), EMBEDDING_DIM)),
+          model: embedded.model,
+          dim: embedded.dim,
+          vec: vectorToPgText(
+            zeroPad(embedded.vecs[i] ?? new Float32Array(embedded.dim), EMBEDDING_DIM),
+          ),
         });
       }
     } else {

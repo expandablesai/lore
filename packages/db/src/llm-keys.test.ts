@@ -1,7 +1,7 @@
 // Key selection: chat and embeddings may come from different providers, and
 // the embedding key must match the vector space the stored chunks live in.
 import { describe, expect, test } from "vitest";
-import { pickChatKey, pickEmbedKey, type RevealedKey } from "./llm-keys.js";
+import { orderEmbedKeys, pickChatKey, pickEmbedKey, type RevealedKey } from "./llm-keys.js";
 
 function key(overrides: Partial<RevealedKey> & { label: string }): RevealedKey & { label: string } {
   return {
@@ -63,5 +63,25 @@ describe("pickEmbedKey", () => {
 
   test("skips chat-only keys", () => {
     expect(pickEmbedKey([claude], null)).toBeNull();
+  });
+});
+
+describe("orderEmbedKeys", () => {
+  test("tries the stored-space key first, then the rest", () => {
+    const ordered = orderEmbedKeys([hosted, local, claude], "nomic-embed-text");
+    expect(ordered.matched).toBe(local);
+    expect(ordered.candidates).toEqual([local, hosted]);
+  });
+
+  test("with no stored vectors, every embeddable key stays available", () => {
+    // A key can be configured to embed and still refuse the call, so the worker
+    // keeps the others as fallbacks instead of giving up on the first failure.
+    expect(orderEmbedKeys([hosted, local], null).candidates).toEqual([hosted, local]);
+  });
+
+  test("reports no match when the stored space is unreachable", () => {
+    const ordered = orderEmbedKeys([hosted, claude], "nomic-embed-text");
+    expect(ordered.matched).toBeNull();
+    expect(ordered.candidates).toEqual([hosted]);
   });
 });

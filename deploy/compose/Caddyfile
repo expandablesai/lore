@@ -16,6 +16,7 @@
 			header_up X-Forwarded-Proto https
 			copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
 		}
+		uri strip_prefix /api
 		reverse_proxy app:3001
 	}
 

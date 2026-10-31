@@ -147,10 +147,18 @@ export interface ChatMessage {
   content: string;
 }
 
+/** An image the reply rests on; the console fetches its bytes itself. */
+export interface ChatImage {
+  documentId: string;
+  filename: string;
+  mime: string;
+}
+
 export interface ChatInput {
   messages: ChatMessage[];
 }
 
 export interface ChatReply {
   message: { role: "assistant"; content: string };
+  images?: ChatImage[];
 }

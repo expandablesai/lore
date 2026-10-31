@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, like, sql } from "drizzle-orm";
 import {
   canEmbedKey,
   chunks,
+  documents,
   dominantEmbeddingModel,
   embeddings,
   pickChatKey,
@@ -26,6 +27,10 @@ import { deterministicEmbed, EMBEDDING_DIM, HASH_DIM, HASH_MODEL, vectorToPgText
  * query is embedded with the model the stored chunks were indexed with —
  * vectors from different models are not comparable, and mixing them turns the
  * recall into noise while still "working".
+ *
+ * An image is indexed as a description, which is text the model can read but
+ * not pictures it can show. The images an answer rests on are therefore
+ * returned beside it, so the console can put them on screen.
  */
 const chatBody = z.object({
   messages: z
@@ -38,6 +43,23 @@ const chatBody = z.object({
     .min(1)
     .max(50),
 });
+
+/** One image attached to a reply; the console fetches the bytes itself. */
+export interface ChatImage {
+  documentId: string;
+  filename: string;
+  mime: string;
+}
+
+/**
+ * Questions that expect to be answered with a picture.
+ *
+ * Matching on the words people use to ask for an image keeps the behaviour
+ * predictable: "show me the portfolio" brings it up, "who is Chen Lian" does
+ * not, and no threshold on a distance score has to be invented for it.
+ */
+const WANTS_IMAGE =
+  /\b(image|images|picture|pictures|photo|photos|screenshot|screenshots|scan|scans|visual|portfolio|design|drawing|diagram|look like|show)\b/i;
 
 /** Embed the question in the stored chunks' vector space. */
 async function queryVectorFor(
@@ -84,9 +106,11 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
           pickEmbedKey(keys, storedModel),
           question,
         );
+        const queryText = vectorToPgText(zeroPad(queryVector, EMBEDDING_DIM));
+
         const rows = await withRls(db, user.orgId, user.id, async (tx) =>
           tx
-            .select({ text: chunks.text })
+            .select({ text: chunks.text, documentId: chunks.documentId })
             .from(embeddings)
             .innerJoin(chunks, eq(chunks.id, embeddings.entityId))
             .where(
@@ -96,12 +120,95 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
                 eq(chunks.orgId, user.orgId),
               ),
             )
-            .orderBy(
-              sql`${embeddings.vec} <=> ${vectorToPgText(zeroPad(queryVector, EMBEDDING_DIM))}::vector`,
-            )
+            .orderBy(sql`${embeddings.vec} <=> ${queryText}::vector`)
             .limit(6),
         );
-        const memory = rows.map((r) => r.text).join("\n\n");
+
+        // Images the retrieved passages came from: the answer is standing on
+        // those descriptions, so the pictures belong with it.
+        const retrievedDocIds = [...new Set(rows.map((r) => r.documentId))];
+        const groundedImages: ChatImage[] =
+          retrievedDocIds.length === 0
+            ? []
+            : await withRls(db, user.orgId, user.id, async (tx) =>
+                tx
+                  .select({ documentId: documents.id, filename: documents.filename, mime: documents.mime })
+                  .from(documents)
+                  .where(
+                    and(
+                      inArray(documents.id, retrievedDocIds),
+                      eq(documents.orgId, user.orgId),
+                      like(documents.mime, "image/%"),
+                    ),
+                  ),
+              );
+
+        // "Show me…" searches the images for themselves: the picture is the
+        // answer, so it should not have to win a text ranking to surface.
+        const askedForImage = WANTS_IMAGE.test(question);
+        const imageMatches = askedForImage
+          ? await withRls(db, user.orgId, user.id, async (tx) =>
+              tx
+                .select({
+                  documentId: documents.id,
+                  filename: documents.filename,
+                  mime: documents.mime,
+                  distance: sql<number>`min(${embeddings.vec} <=> ${queryText}::vector)`,
+                })
+                .from(embeddings)
+                .innerJoin(chunks, eq(chunks.id, embeddings.entityId))
+                .innerJoin(documents, eq(documents.id, chunks.documentId))
+                .where(
+                  and(
+                    eq(embeddings.entityType, "chunk"),
+                    eq(embeddings.model, model),
+                    eq(chunks.orgId, user.orgId),
+                    eq(documents.orgId, user.orgId),
+                    like(documents.mime, "image/%"),
+                  ),
+                )
+                .groupBy(documents.id, documents.filename, documents.mime)
+                .orderBy(sql`min(${embeddings.vec} <=> ${queryText}::vector)`)
+                .limit(3),
+            )
+          : [];
+
+        const images: ChatImage[] = [];
+        const seen = new Set<string>();
+        for (const image of [...groundedImages, ...imageMatches]) {
+          if (seen.has(image.documentId)) continue;
+          seen.add(image.documentId);
+          images.push({ documentId: image.documentId, filename: image.filename, mime: image.mime });
+        }
+
+        // Their descriptions have to travel with the prompt too, or the model
+        // is told about an image it cannot say anything about.
+        const imageDescriptions =
+          imageMatches.length === 0
+            ? []
+            : await withRls(db, user.orgId, user.id, async (tx) =>
+                tx
+                  .select({ text: chunks.text })
+                  .from(chunks)
+                  .where(
+                    and(
+                      inArray(
+                        chunks.documentId,
+                        imageMatches.map((m) => m.documentId),
+                      ),
+                      eq(chunks.orgId, user.orgId),
+                    ),
+                  )
+                  .limit(6),
+              );
+
+        const memory = [...rows.map((r) => r.text), ...imageDescriptions.map((d) => d.text)].join("\n\n");
+        const shown =
+          images.length > 0
+            ? `\n\nThe user is being shown these images with your reply: ${images
+                .map((i) => i.filename)
+                .join(", ")}. Refer to them by name when it helps.`
+            : "";
 
         const adapter =
           chatKey.apiType === "anthropic"
@@ -112,7 +219,7 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
           messages: [
             {
               role: "system",
-              content: `You are the EXPANDABLES LORE assistant. Ground your answer in the retrieved memories when relevant.\n\n${memory}`,
+              content: `You are the EXPANDABLES LORE assistant. Ground your answer in the retrieved memories when relevant.\n\n${memory}${shown}`,
             },
             ...messages,
           ],
@@ -121,7 +228,7 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
           role: "assistant",
           content: "",
         };
-        return { message };
+        return { message, images };
       },
     );
   };

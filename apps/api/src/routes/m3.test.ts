@@ -232,6 +232,47 @@ describe("M3 ingestion: document upload, dedupe, list, read, reprocess", () => {
     expect((r.json() as { error: string }).error).toMatch(/vision model/i);
   });
 
+  // ─── Blob ──────────────────────────────────────────────────────────────────
+
+  test("GET /documents/:id/blob streams the stored file", async () => {
+    const content = `blob body ${crypto.randomUUID()}`;
+    const boundary = "----M3Blob";
+    const upload = await app.inject({
+      method: "POST",
+      url: "/documents/upload",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": `multipart/form-data; boundary=${boundary}`,
+      },
+      payload: multipart("blob.txt", content, "text/plain", boundary),
+    });
+    const docId = (upload.json() as { id: string }).id;
+
+    const r = await app.inject({
+      method: "GET",
+      url: `/documents/${docId}/blob`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(r.statusCode).toBe(200);
+    expect(r.headers["content-type"]).toContain("text/plain");
+    expect(r.body).toBe(content);
+  });
+
+  test("GET /documents/:id/blob is authenticated and org-scoped", async () => {
+    const anonymous = await app.inject({
+      method: "GET",
+      url: `/documents/${crypto.randomUUID()}/blob`,
+    });
+    expect(anonymous.statusCode).toBe(401);
+
+    const unknown = await app.inject({
+      method: "GET",
+      url: `/documents/${crypto.randomUUID()}/blob`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(unknown.statusCode).toBe(404);
+  });
+
   // ─── List ──────────────────────────────────────────────────────────────────
 
   test("GET /documents lists uploaded documents", async () => {

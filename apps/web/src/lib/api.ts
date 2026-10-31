@@ -275,5 +275,21 @@ export const api = {
 
   chat: (token: string, input: ChatInput) =>
     request<ChatReply>("/chat", { method: "POST", token, body: input }),
+
+  /**
+   * The stored bytes of a document.
+   *
+   * An <img src> cannot carry an Authorization header, so callers fetch the
+   * blob with the bearer token and hand the console an object URL instead.
+   */
+  documentBlob: async (token: string, id: string): Promise<Blob> => {
+    const res = await fetch(`${API_BASE}/documents/${id}/blob`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (res.status === 401) throw new ApiError(401, GATE_EXPIRED_MESSAGE);
+    if (!res.ok) throw new ApiError(res.status, `could not load the file (HTTP ${res.status})`);
+    return res.blob();
+  },
+
   health: () => request<{ ok: boolean }>("/healthz"),
 };

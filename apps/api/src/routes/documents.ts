@@ -7,7 +7,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { writeFile, mkdir } from "node:fs/promises";
+import { writeFile, mkdir, readFile } from "node:fs/promises";
 import { join, extname } from "node:path";
 import type { Db } from "@lore/db";
 import {
@@ -201,6 +201,31 @@ export const createDocumentRoutes: (db: Db) => FastifyPluginAsync = (db) => asyn
 
     const chunks = await getDocumentChunks(db, doc.id);
     return reply.send({ document: doc, chunks });
+  });
+
+  // GET /documents/:id/blob — stream the stored file itself
+  app.get<{
+    Params: { id: string };
+  }>("/:id/blob", async (request, reply) => {
+    const user = request.user as AuthenticatedUser;
+    if (!user) return reply.code(401).send({ error: "unauthorized" });
+
+    const doc = await getDocument(db, request.params.id);
+    if (!doc) return reply.code(404).send({ error: "not found" });
+    if (doc.orgId !== user.orgId) return reply.code(403).send({ error: "forbidden" });
+
+    const filePath = join(blobsDir(), doc.storageKey);
+    if (!existsSync(filePath)) {
+      return reply.code(410).send({ error: "the stored file is no longer available" });
+    }
+
+    const data = await readFile(filePath);
+    return reply
+      .header("content-type", doc.mime)
+      .header("content-length", String(data.length))
+      .header("content-disposition", `inline; filename="${doc.filename.replace(/["\\]/g, "")}"`)
+      .header("cache-control", "private, max-age=300")
+      .send(data);
   });
 
   // POST /documents/:id/reprocess — re-trigger ingestion

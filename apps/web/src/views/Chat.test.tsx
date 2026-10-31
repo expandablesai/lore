@@ -1,6 +1,6 @@
 // Chat keyboard behaviour: Enter sends, Shift+Enter writes a new line, and an
 // in-progress IME composition is never cut short by the Enter that commits it.
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { fireEvent } from "@testing-library/react";
@@ -67,5 +67,58 @@ describe("Chat", () => {
     await userEvent.type(box, "   {Enter}");
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("Chat images", () => {
+  // jsdom ships neither function, and the component revokes its object URLs
+  // during cleanup — after this file would have restored the originals.
+  beforeAll(() => {
+    URL.createObjectURL = () => "blob:mock-url";
+    URL.revokeObjectURL = () => {};
+  });
+
+  it("shows the image a reply was grounded on", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/api/chat")) {
+        return {
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          text: async () =>
+            JSON.stringify({
+              message: { role: "assistant", content: "Here is the portfolio." },
+              images: [{ documentId: "d1", filename: "portfolio.png", mime: "image/png" }],
+            }),
+        } as Response;
+      }
+      if (url.includes("/api/documents/d1/blob")) {
+        return {
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          blob: async () => new Blob(["png"], { type: "image/png" }),
+        } as Response;
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<Chat token="t" user={user} navigate={vi.fn()} />);
+    await userEvent.type(screen.getByLabelText("Message"), "show me the portfolio{Enter}");
+
+    await waitFor(() => expect(screen.getByAltText("portfolio.png")).toBeInTheDocument());
+    expect(screen.getByAltText("portfolio.png")).toHaveAttribute("src", "blob:mock-url");
+    expect(screen.getByText("Here is the portfolio.")).toBeInTheDocument();
+  });
+
+  it("shows no image strip when the reply has none", async () => {
+    const fetchMock = installFetchMock({ "/api/chat": reply("Nothing visual here.") });
+    render(<Chat token="t" user={user} navigate={vi.fn()} />);
+    await userEvent.type(screen.getByLabelText("Message"), "who is Chen Lian{Enter}");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText("Nothing visual here.")).toBeInTheDocument());
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 });

@@ -1,7 +1,8 @@
 theme: dark
 
-jwt_secret: ${AUTHELIA_JWT_SECRET}
-encryption_key: ${AUTHELIA_ENCRYPTION_KEY}
+identity_validation:
+  reset_password:
+    jwt_secret: ${AUTHELIA_JWT_SECRET}
 
 log:
   level: info
@@ -10,6 +11,7 @@ server:
   listen: tcp://0.0.0.0:9091
 
 storage:
+  encryption_key: ${AUTHELIA_ENCRYPTION_KEY}
   local:
     path: /config/db.sqlite3
 
@@ -28,7 +30,7 @@ authentication_backend:
         salt_length: 16
 
 access_control:
-  default_policy: deny
+  default_policy: one_factor
   rules:
     - domain: "lore.dushyant.com"
       policy: one_factor
@@ -42,6 +44,7 @@ session:
   cookies:
     - domain: "dushyant.com"
       authelia_url: "https://lore.dushyant.com"
+      default_redirection_url: "https://lore.dushyant.com"
 
 regulation:
   max_retries: 3

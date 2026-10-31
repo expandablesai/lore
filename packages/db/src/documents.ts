@@ -164,7 +164,7 @@ export async function insertEmbeddings(
   // Use raw SQL for pgvector insertion (drizzle doesn't natively support vector literals)
   for (const row of rows) {
     await db.execute(sql`
-      INSERT INTO lore.embeddings (entity_type, entity_id, model, dim, vec)
+      INSERT INTO embeddings (entity_type, entity_id, model, dim, vec)
       VALUES (${row.entityType}, ${row.entityId}::uuid, ${row.model}, ${row.dim}, ${row.vec}::vector)
       ON CONFLICT (entity_type, entity_id, model) DO UPDATE SET vec = ${row.vec}::vector, dim = ${row.dim}
     `);
@@ -201,9 +201,9 @@ export async function getDocumentChunks(
 export async function deleteDocumentDerived(db: Db, documentId: string): Promise<void> {
   // Delete embeddings referencing this document's chunks as entities
   await db.execute(sql`
-    DELETE FROM lore.embeddings
+    DELETE FROM embeddings
     WHERE entity_type = 'chunk'
-      AND entity_id IN (SELECT id FROM lore.chunks WHERE document_id = ${documentId}::uuid)
+      AND entity_id IN (SELECT id FROM chunks WHERE document_id = ${documentId}::uuid)
   `);
   // Delete chunks
   await db.delete(chunks).where(eq(chunks.documentId, documentId));

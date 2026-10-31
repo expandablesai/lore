@@ -3,7 +3,7 @@
 // buried in settings.
 import { useCallback, useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
-import { api } from "../lib/api";
+import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useI18n } from "../lib/i18n";
 import { useTheme, type Theme } from "../lib/theme";
@@ -26,6 +26,12 @@ export function Profile({ token, user }: ViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [cacheBust, setCacheBust] = useState(0);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordNotice, setPasswordNotice] = useState<string | null>(null);
 
   // The picture is cached per (user, revision) so replacing it shows up at once.
   useEffect(() => {
@@ -85,6 +91,45 @@ export function Profile({ token, user }: ViewProps) {
     [name, refreshMe, t, token],
   );
 
+  const onChangePassword = useCallback(
+    async (event: FormEvent) => {
+      event.preventDefault();
+      setPasswordError(null);
+      setPasswordNotice(null);
+      if (newPassword.length < 10) {
+        setPasswordError(t("The new password must be at least 10 characters."));
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        setPasswordError(t("Passwords do not match."));
+        return;
+      }
+      setChangingPassword(true);
+      try {
+        const res = await api.changePassword(token, { currentPassword, newPassword });
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        setPasswordNotice(
+          res.revokedSessions > 0
+            ? t("Password updated. Other sessions were signed out.")
+            : t("Password updated."),
+        );
+      } catch (e) {
+        // A wrong current password is a 403 the server names precisely; show it
+        // in the interface language rather than the raw English response.
+        if (e instanceof ApiError && e.status === 403) {
+          setPasswordError(t("Current password is incorrect."));
+        } else {
+          setPasswordError(errMessage(e));
+        }
+      } finally {
+        setChangingPassword(false);
+      }
+    },
+    [confirmPassword, currentPassword, newPassword, t, token],
+  );
+
   return (
     <div className="space-y-6">
       <header>
@@ -142,6 +187,54 @@ export function Profile({ token, user }: ViewProps) {
 
         {error && <div className="mt-3"><ErrorNote message={error} /></div>}
         {notice && <p className="mt-3 text-xs text-emerald-300">{notice}</p>}
+      </Panel>
+
+      {/* Password: requires the current one even when signed in, and ejects
+          every other session on success. */}
+      <Panel>
+        <h2 className="mb-3 text-sm font-medium text-slate-200">{t("Change password")}</h2>
+        <form className="grid gap-3 sm:grid-cols-3" onSubmit={onChangePassword}>
+          <Field
+            label={t("Current password")}
+            type="password"
+            autoComplete="current-password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            required
+          />
+          <Field
+            label={t("New password")}
+            type="password"
+            autoComplete="new-password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            required
+          />
+          <Field
+            label={t("Confirm new password")}
+            type="password"
+            autoComplete="new-password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+          />
+          <div className="sm:col-span-3">
+            <Button
+              type="submit"
+              disabled={
+                changingPassword ||
+                currentPassword === "" ||
+                newPassword === "" ||
+                confirmPassword === ""
+              }
+            >
+              {changingPassword ? t("Changing…") : t("Change password")}
+            </Button>
+          </div>
+        </form>
+        <p className="mt-2 text-xs text-slate-500">{t("At least 10 characters. Other devices are signed out.")}</p>
+        {passwordError && <div className="mt-3"><ErrorNote message={passwordError} /></div>}
+        {passwordNotice && <p className="mt-3 text-xs text-emerald-300">{passwordNotice}</p>}
       </Panel>
 
       <Panel>

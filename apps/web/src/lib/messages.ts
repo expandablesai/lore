@@ -10,6 +10,17 @@ import type { Locale } from "@lore/core/locales";
 type Dict = Record<string, string>;
 
 const hi: Dict = {
+  "Change password": "पासवर्ड बदलें",
+  "Current password": "वर्तमान पासवर्ड",
+  "New password": "नया पासवर्ड",
+  "Confirm new password": "नया पासवर्ड दोहराएँ",
+  "Changing…": "बदला जा रहा है…",
+  "Password updated.": "पासवर्ड अपडेट हुआ।",
+  "Password updated. Other sessions were signed out.": "पासवर्ड अपडेट हुआ। अन्य सत्र साइन आउट कर दिए गए।",
+  "Passwords do not match.": "पासवर्ड मेल नहीं खाते।",
+  "The new password must be at least 10 characters.": "नया पासवर्ड कम से कम 10 अक्षरों का होना चाहिए।",
+  "Current password is incorrect.": "वर्तमान पासवर्ड गलत है।",
+  "At least 10 characters. Other devices are signed out.": "कम से कम 10 अक्षर। अन्य डिवाइस साइन आउट हो जाते हैं।",
   "Welcome back, {name}": "वापसी पर स्वागत है, {name}",
   Organizations: "संगठन",
   Organization: "संगठन",
@@ -164,6 +175,17 @@ const hi: Dict = {
 };
 
 const zh: Dict = {
+  "Change password": "修改密码",
+  "Current password": "当前密码",
+  "New password": "新密码",
+  "Confirm new password": "确认新密码",
+  "Changing…": "正在修改…",
+  "Password updated.": "密码已更新。",
+  "Password updated. Other sessions were signed out.": "密码已更新，其他会话已退出登录。",
+  "Passwords do not match.": "两次输入的密码不一致。",
+  "The new password must be at least 10 characters.": "新密码至少需要 10 个字符。",
+  "Current password is incorrect.": "当前密码不正确。",
+  "At least 10 characters. Other devices are signed out.": "至少 10 个字符；其他设备会被退出登录。",
   "Welcome back, {name}": "欢迎回来，{name}",
   Organizations: "组织",
   Organization: "组织",

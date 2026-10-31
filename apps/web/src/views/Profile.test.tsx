@@ -61,3 +61,63 @@ describe("Profile", () => {
     expect(document.documentElement.dataset.theme).toBe("light");
   });
 });
+describe("Profile — password", () => {
+  const renderProfile = () =>
+    render(
+      <ThemeProvider token="t">
+        <Profile token="t" user={user} navigate={vi.fn()} />
+      </ThemeProvider>,
+    );
+
+  it("changes the password and reports the ejected sessions", async () => {
+    const fetchMock = installFetchMock({
+      "/api/me": jsonResponse(200, { ...me }),
+      "/api/me/password": jsonResponse(200, { ok: true, revokedSessions: 2 }),
+    });
+    renderProfile();
+
+    await userEvent.type(screen.getByLabelText("Current password"), "old-password-1");
+    await userEvent.type(screen.getByLabelText("New password"), "brand-new-password");
+    await userEvent.type(screen.getByLabelText("Confirm new password"), "brand-new-password");
+    await userEvent.click(screen.getByRole("button", { name: "Change password" }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/Other sessions were signed out/)).toBeInTheDocument(),
+    );
+    const passwordCall = fetchMock.mock.calls.find((call) => String(call[0]).includes("/me/password"));
+    const body = JSON.parse(String((passwordCall?.[1] as RequestInit).body)) as {
+      currentPassword: string;
+      newPassword: string;
+    };
+    expect(body).toEqual({ currentPassword: "old-password-1", newPassword: "brand-new-password" });
+    expect(screen.getByLabelText("Current password")).toHaveValue("");
+  });
+
+  it("refuses mismatched confirmation without calling the API", async () => {
+    const fetchMock = installFetchMock({ "/api/me": jsonResponse(200, { ...me }) });
+    renderProfile();
+
+    await userEvent.type(screen.getByLabelText("Current password"), "old-password-1");
+    await userEvent.type(screen.getByLabelText("New password"), "brand-new-password");
+    await userEvent.type(screen.getByLabelText("Confirm new password"), "something-else");
+    await userEvent.click(screen.getByRole("button", { name: "Change password" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Passwords do not match.");
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/me/password"))).toBe(false);
+  });
+
+  it("says the current password is wrong in the interface language", async () => {
+    installFetchMock({
+      "/api/me": jsonResponse(200, { ...me }),
+      "/api/me/password": jsonResponse(403, { error: "current password is incorrect" }),
+    });
+    renderProfile();
+
+    await userEvent.type(screen.getByLabelText("Current password"), "wrong-password");
+    await userEvent.type(screen.getByLabelText("New password"), "brand-new-password");
+    await userEvent.type(screen.getByLabelText("Confirm new password"), "brand-new-password");
+    await userEvent.click(screen.getByRole("button", { name: "Change password" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Current password is incorrect.");
+  });
+});

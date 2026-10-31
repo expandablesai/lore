@@ -1,10 +1,11 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { extname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   users,
+  sessions,
   audit,
   clearUserAvatar,
   getUserAvatar,
@@ -12,7 +13,9 @@ import {
   type Db,
 } from "@lore/db";
 import type { FastifyPluginAsync } from "fastify";
+import { hash, verify } from "@node-rs/argon2";
 import { LOCALES, isLocale } from "@lore/core";
+import { bearerFrom, hashToken } from "../auth-tokens.ts";
 import type { AuthenticatedUser } from "../plugins/auth-guard.ts";
 
 const ROLE_RANK: Record<string, number> = { viewer: 0, member: 1, org_admin: 2, superadmin: 3 };
@@ -127,6 +130,67 @@ export const createUserRoutes: (db: Db) => FastifyPluginAsync = (db) => async (a
       .header("cache-control", "private, max-age=60")
       .send(data);
   });
+
+  /**
+   * Change the account password.
+   *
+   * The current password is required even though the caller already holds a
+   * session: a borrowed laptop must not be enough to lock the owner out. Every
+   * *other* session is revoked on success — a password change is the moment to
+   * eject devices that were signed in with the old one — while the session that
+   * made the change keeps working.
+   */
+  app.post<{ Body: { currentPassword?: string; newPassword?: string } }>(
+    "/me/password",
+    async (request, reply) => {
+      const { currentPassword, newPassword } = request.body ?? {};
+      if (typeof currentPassword !== "string" || typeof newPassword !== "string") {
+        return reply.code(400).send({ error: "current password and new password are required" });
+      }
+      // Same floor as signup, so a password cannot be weakened by changing it.
+      if (newPassword.length < 10 || newPassword.length > 512) {
+        return reply.code(400).send({ error: "the new password must be at least 10 characters" });
+      }
+      if (newPassword === currentPassword) {
+        return reply.code(400).send({ error: "the new password must differ from the current one" });
+      }
+
+      const rows = await db
+        .select({ passwordHash: users.passwordHash })
+        .from(users)
+        .where(eq(users.id, request.user.id))
+        .limit(1);
+      const row = rows[0];
+      if (!row) return reply.code(404).send({ error: "not found" });
+      if (!(await verify(row.passwordHash, currentPassword))) {
+        return reply.code(403).send({ error: "current password is incorrect" });
+      }
+
+      await db
+        .update(users)
+        .set({ passwordHash: await hash(newPassword) })
+        .where(eq(users.id, request.user.id));
+
+      const token = bearerFrom(request.headers.authorization);
+      const currentSession = token ? hashToken(token) : "";
+      const revoked = await db
+        .delete(sessions)
+        .where(and(eq(sessions.userId, request.user.id), ne(sessions.tokenHash, currentSession)))
+        .returning({ id: sessions.id });
+
+      await db.insert(audit).values({
+        orgId: request.user.orgId,
+        actorId: request.user.id,
+        action: "user.password",
+        targetType: "user",
+        targetIds: [request.user.id],
+        detail: { revokedSessions: revoked.length },
+        ip: request.ip,
+      });
+
+      return { ok: true, revokedSessions: revoked.length };
+    },
+  );
 
   app.patch<{ Body: { displayName?: string; theme?: string; neon?: boolean; locale?: string | null } }>("/me", async (request, reply) => {
     const { displayName, theme, neon, locale } = request.body;

@@ -309,6 +309,13 @@ export const api = {
   updateMe: (token: string, input: { theme?: "light" | "dark" | "system"; neon?: boolean; displayName?: string; locale?: string | null }) =>
     request<MeUser>("/me", { method: "PATCH", token, body: input }),
 
+  changePassword: (token: string, input: { currentPassword: string; newPassword: string }) =>
+    request<{ ok: boolean; revokedSessions: number }>("/me/password", {
+      method: "POST",
+      token,
+      body: input,
+    }),
+
   uploadAvatar: (token: string, file: File) => {
     const form = new FormData();
     form.append("file", file);

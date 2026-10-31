@@ -293,6 +293,7 @@ export const orgLlmKeys = pgTable("org_llm_keys", {
   orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
   label: text("label").notNull(),
   provider: text("provider").notNull().default("openai"),
+  apiType: text("api_type").notNull().default("openai"),
   baseUrl: text("base_url").notNull().default("https://api.openai.com/v1"),
   chatModel: text("chat_model").notNull().default("gpt-4o"),
   embedModel: text("embed_model").notNull().default("text-embedding-3-large"),
@@ -300,4 +301,6 @@ export const orgLlmKeys = pgTable("org_llm_keys", {
   cipher: text("cipher").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
-});
+}, (t) => [
+  check("api_type_domain", sql`${t.apiType} IN ('openai', 'anthropic')`),
+]);

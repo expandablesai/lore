@@ -8,7 +8,7 @@ import {
   type Db,
 } from "@lore/db";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
-import { createOpenAIAdapter } from "@lore/proxy";
+import { createAnthropicAdapter, createOpenAIAdapter } from "@lore/proxy";
 import type { AuthenticatedUser } from "../plugins/auth-guard.ts";
 
 /**
@@ -28,8 +28,9 @@ const addBody = z.object({
   provider: z.string().min(1).max(50).optional(),
   baseUrl: z.string().url().optional(),
   chatModel: z.string().min(1).max(200).optional(),
-  embedModel: z.string().min(1).max(200).optional(),
+  embedModel: z.string().max(200).optional(),
   embedDim: z.number().int().min(1).max(3072).optional(),
+  apiType: z.enum(["openai", "anthropic"]).optional(),
 });
 
 export const createLlmKeyRoutes: (db: Db) => FastifyPluginAsyncZod = (db) => async (app) => {
@@ -57,7 +58,7 @@ export const createLlmKeyRoutes: (db: Db) => FastifyPluginAsyncZod = (db) => asy
       if (request.params.id !== request.user.orgId || !isOrgAdmin(request.user)) {
         return reply.code(403).send({ error: "forbidden" });
       }
-      const { label, apiKey, provider, baseUrl, chatModel, embedModel, embedDim } = request.body;
+      const { label, apiKey, provider, baseUrl, chatModel, embedModel, embedDim, apiType } = request.body;
       const rows = await insertLlmKey(db, {
         orgId: request.params.id,
         label,
@@ -67,6 +68,7 @@ export const createLlmKeyRoutes: (db: Db) => FastifyPluginAsyncZod = (db) => asy
         chatModel,
         embedModel,
         embedDim,
+        apiType,
       });
       const row = rows[0];
       if (!row) throw new Error("llm key insert failed");
@@ -113,7 +115,10 @@ export const createLlmKeyRoutes: (db: Db) => FastifyPluginAsyncZod = (db) => asy
       const key = await revealLlmKey(db, request.params.keyId);
       if (!key) return reply.code(404).send({ error: "not found" });
       try {
-        const adapter = createOpenAIAdapter({ apiKey: key.apiKey, baseUrl: key.baseUrl });
+        const adapter =
+          key.apiType === "anthropic"
+            ? createAnthropicAdapter({ apiKey: key.apiKey, baseUrl: key.baseUrl })
+            : createOpenAIAdapter({ apiKey: key.apiKey, baseUrl: key.baseUrl });
         const res = await adapter.chatCompletions({
           model: key.chatModel,
           messages: [{ role: "user", content: "ping" }],

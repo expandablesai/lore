@@ -2,6 +2,7 @@ import { PgBoss } from "pg-boss";
 import { readFile } from "node:fs/promises";
 import { createDb } from "@lore/db";
 import {
+  canEmbedKey,
   updateDocumentStatus,
   insertChunks,
   insertEmbeddings,
@@ -57,7 +58,7 @@ async function ingestDocument(
     }));
     await insertChunks(db, chunkRows);
 
-    // Embed chunks: real OpenAI vectors when the org has a key, else deterministic hash
+    // Embed chunks: real vectors when the key can embed, else deterministic hash
     const embeddingRows: Array<{
       entityType: string;
       entityId: string;
@@ -71,7 +72,7 @@ async function ingestDocument(
     const storedChunks = await getDocumentChunks(db, documentId);
 
     const key = await revealActiveLlmKey(db, orgId);
-    if (key) {
+    if (key && canEmbedKey(key)) {
       const embedder = createOpenAIEmbedder({ apiKey: key.apiKey, baseUrl: key.baseUrl });
       const vecs = await embedder.embed(storedChunks.map((c) => c.text), key.embedModel);
       for (let i = 0; i < storedChunks.length; i++) {

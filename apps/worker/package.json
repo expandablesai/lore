@@ -15,6 +15,7 @@
     "@lore/db": "workspace:*",
     "@lore/core": "workspace:*",
     "@lore/proxy": "workspace:*",
+    "drizzle-orm": "0.45.4",
     "pdfjs-dist": "6.4.299",
     "mammoth": "1.13.0",
     "exceljs": "4.4.0",

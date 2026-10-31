@@ -131,6 +131,7 @@ export interface OrgLlmKey {
   id: string;
   label: string;
   provider: string;
+  apiType: string;
   baseUrl: string;
   chatModel: string;
   embedModel: string;

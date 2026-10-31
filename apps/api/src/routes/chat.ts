@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
 import {
+  canEmbedKey,
   chunks,
   embeddings,
   revealActiveLlmKey,
@@ -8,8 +9,8 @@ import {
   withRls,
 } from "@lore/db";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
-import { createOpenAIAdapter, createOpenAIEmbedder } from "@lore/proxy";
-import { EMBEDDING_DIM, vectorToPgText, zeroPad } from "@lore/core";
+import { createAnthropicAdapter, createOpenAIAdapter, createOpenAIEmbedder } from "@lore/proxy";
+import { deterministicEmbed, EMBEDDING_DIM, HASH_DIM, vectorToPgText, zeroPad } from "@lore/core";
 
 /**
  * In-app chat — retrieves the caller's org memories by cosine similarity over
@@ -51,6 +52,13 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
             .send({ error: "no active LLM key for this org" });
         }
 
+        const canEmbed = canEmbedKey(key);
+        const queryVector = canEmbed
+          ? ((await createOpenAIEmbedder({ apiKey: key.apiKey, baseUrl: key.baseUrl }).embed(
+              question,
+              key.embedModel,
+            ))[0] ?? new Float32Array(EMBEDDING_DIM))
+          : deterministicEmbed(question, HASH_DIM);
         const rows = await withRls(db, user.orgId, user.id, async (tx) =>
           tx
             .select({ text: chunks.text })
@@ -63,23 +71,16 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
               ),
             )
             .orderBy(
-              sql`${embeddings.vec} <=> ${
-                vectorToPgText(
-                  zeroPad(
-                    (await createOpenAIEmbedder({ apiKey: key.apiKey, baseUrl: key.baseUrl }).embed(
-                      question,
-                      key.embedModel,
-                    ))[0] ?? new Float32Array(EMBEDDING_DIM),
-                    EMBEDDING_DIM,
-                  ),
-                )
-              }::vector`,
+              sql`${embeddings.vec} <=> ${vectorToPgText(zeroPad(queryVector, EMBEDDING_DIM))}::vector`,
             )
             .limit(6),
         );
         const memory = rows.map((r) => r.text).join("\n\n");
 
-        const adapter = createOpenAIAdapter({ apiKey: key.apiKey, baseUrl: key.baseUrl });
+        const adapter =
+          key.apiType === "anthropic"
+            ? createAnthropicAdapter({ apiKey: key.apiKey, baseUrl: key.baseUrl })
+            : createOpenAIAdapter({ apiKey: key.apiKey, baseUrl: key.baseUrl });
         const res = await adapter.chatCompletions({
           model: key.chatModel,
           messages: [

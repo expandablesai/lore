@@ -11,6 +11,7 @@ import { Badge, Button, ErrorNote, Field, Panel, StatusLine, errMessage, type Vi
 interface ProviderPreset {
   id: string;
   label: string;
+  apiType: "openai" | "anthropic";
   baseUrl: string;
   chatModel: string;
   embedModel: string;
@@ -18,11 +19,12 @@ interface ProviderPreset {
 }
 
 const PROVIDERS: ProviderPreset[] = [
-  { id: "openai", label: "OpenAI", baseUrl: "https://api.openai.com/v1", chatModel: "gpt-4o", embedModel: "text-embedding-3-large", embedDim: 3072 },
-  { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com/v1", chatModel: "deepseek-chat", embedModel: "text-embedding-3-large", embedDim: 3072 },
-  { id: "ollama", label: "Ollama", baseUrl: "http://localhost:11434/v1", chatModel: "llama3.1", embedModel: "nomic-embed-text", embedDim: 768 },
-  { id: "strata", label: "Strata", baseUrl: "", chatModel: "", embedModel: "", embedDim: 0 },
-  { id: "custom", label: "Custom", baseUrl: "", chatModel: "", embedModel: "", embedDim: 0 },
+  { id: "openai", label: "OpenAI", apiType: "openai", baseUrl: "https://api.openai.com/v1", chatModel: "gpt-4o", embedModel: "text-embedding-3-large", embedDim: 3072 },
+  { id: "deepseek", label: "DeepSeek", apiType: "openai", baseUrl: "https://api.deepseek.com/v1", chatModel: "deepseek-chat", embedModel: "text-embedding-3-large", embedDim: 3072 },
+  { id: "ollama", label: "Ollama", apiType: "openai", baseUrl: "http://localhost:11434/v1", chatModel: "llama3.1", embedModel: "nomic-embed-text", embedDim: 768 },
+  { id: "claude", label: "Claude", apiType: "anthropic", baseUrl: "https://api.anthropic.com/v1", chatModel: "claude-3-5-sonnet-latest", embedModel: "", embedDim: 0 },
+  { id: "strata", label: "Strata", apiType: "openai", baseUrl: "", chatModel: "", embedModel: "", embedDim: 0 },
+  { id: "custom", label: "Custom", apiType: "openai", baseUrl: "", chatModel: "", embedModel: "", embedDim: 0 },
 ];
 
 function canManage(role: string): boolean {
@@ -74,7 +76,8 @@ export function LlmKeys({ token, user }: ViewProps) {
     setAdding(true);
     setAddError(null);
     try {
-      await api.addLlmKey(token, orgId, { label, apiKey, provider, baseUrl, chatModel, embedModel, embedDim });
+      const preset = PROVIDERS.find((p) => p.id === provider);
+      await api.addLlmKey(token, orgId, { label, apiKey, provider, apiType: preset?.apiType ?? "openai", baseUrl, chatModel, embedModel, embedDim });
       setLabel("");
       setApiKey("");
       load();

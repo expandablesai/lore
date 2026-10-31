@@ -98,17 +98,90 @@ export function createOpenAIAdapter(opts: AdapterOptions): UpstreamAdapter {
   };
 }
 
-/** Anthropic adapter — typed stub until wired. */
+/** Anthropic Messages API POST — x-api-key + anthropic-version headers (not Bearer). */
+async function postAnthropicJson(url: string, apiKey: string, body: unknown): Promise<unknown> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`upstream ${res.status}: ${text.slice(0, 300)}`);
+  }
+  return JSON.parse(text) as unknown;
+}
+
+/** Split a ChatMessage[] into Anthropic system text and conversation turns. */
+function splitAnthropic(messages: readonly ChatMessage[]): {
+  system: string;
+  messages: readonly { role: "user" | "assistant"; content: string }[];
+} {
+  const system = messages
+    .filter((m) => m.role === "system")
+    .map((m) => m.content)
+    .join("\n\n");
+  const turns = messages
+    .filter((m) => m.role !== "system")
+    .map((m) => ({
+      role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
+      content: m.content,
+    }));
+  return { system, messages: turns };
+}
+
+/** Anthropic adapter — real /v1/messages over fetch; NO embeddings API. */
 export function createAnthropicAdapter(opts: AdapterOptions): UpstreamAdapter {
   const baseUrl = opts.baseUrl ?? ANTHROPIC_BASE;
+  const base = baseUrl.endsWith("/v1") ? baseUrl.slice(0, -"/v1".length) : baseUrl;
   return {
     name: "anthropic",
     baseUrl,
-    chatCompletions(): Promise<ChatCompletionsResponse> {
-      throw new Error("anthropic adapter does not serve /v1/chat/completions");
+    async chatCompletions(request: ChatCompletionsRequest): Promise<ChatCompletionsResponse> {
+      const { system, messages } = splitAnthropic(request.messages);
+      const json = await postAnthropicJson(`${base}/v1/messages`, opts.apiKey, {
+        model: request.model,
+        max_tokens: 1024,
+        ...(system ? { system } : {}),
+        messages,
+      });
+      const data = json as {
+        id?: string;
+        model?: string;
+        content?: readonly { type?: string; text?: string }[];
+      };
+      const text = data.content?.[0]?.text ?? "";
+      return {
+        id: data.id ?? "",
+        model: data.model ?? request.model,
+        choices: [{ message: { role: "assistant", content: text } }],
+      };
     },
-    messages(): Promise<MessagesResponse> {
-      throw new Error("anthropic.messages: not implemented");
+    async messages(request: MessagesRequest): Promise<MessagesResponse> {
+      const { system, messages } = splitAnthropic(request.messages);
+      const json = await postAnthropicJson(`${base}/v1/messages`, opts.apiKey, {
+        model: request.model,
+        max_tokens: request.max_tokens,
+        ...(system ? { system } : {}),
+        messages,
+      });
+      const data = json as {
+        id?: string;
+        model?: string;
+        content?: readonly { type?: string; text?: string }[];
+      };
+      return {
+        id: data.id ?? "",
+        model: data.model ?? request.model,
+        content: (data.content ?? []).map((c) => ({
+          type: c.type ?? "text",
+          text: c.text ?? "",
+        })),
+      };
     },
   };
 }

@@ -12,6 +12,7 @@ export interface NewLlmKey {
   orgId: string;
   label: string;
   provider?: string;
+  apiType?: string;
   baseUrl?: string;
   chatModel?: string;
   embedModel?: string;
@@ -22,6 +23,7 @@ export interface NewLlmKey {
 /** A decrypted key plus its live provider config for the request path. */
 export interface RevealedKey {
   apiKey: string;
+  apiType: string;
   baseUrl: string;
   chatModel: string;
   embedModel: string;
@@ -35,6 +37,7 @@ export function insertLlmKey(db: Db, input: NewLlmKey) {
       orgId: input.orgId,
       label: input.label,
       provider: input.provider ?? "openai",
+      apiType: input.apiType ?? "openai",
       baseUrl: input.baseUrl ?? "https://api.openai.com/v1",
       chatModel: input.chatModel ?? "gpt-4o",
       embedModel: input.embedModel ?? "text-embedding-3-large",
@@ -46,6 +49,7 @@ export function insertLlmKey(db: Db, input: NewLlmKey) {
       orgId: orgLlmKeys.orgId,
       label: orgLlmKeys.label,
       provider: orgLlmKeys.provider,
+      apiType: orgLlmKeys.apiType,
       baseUrl: orgLlmKeys.baseUrl,
       chatModel: orgLlmKeys.chatModel,
       embedModel: orgLlmKeys.embedModel,
@@ -60,6 +64,7 @@ export function listLlmKeys(db: Db, orgId: string) {
       id: orgLlmKeys.id,
       label: orgLlmKeys.label,
       provider: orgLlmKeys.provider,
+      apiType: orgLlmKeys.apiType,
       baseUrl: orgLlmKeys.baseUrl,
       chatModel: orgLlmKeys.chatModel,
       embedModel: orgLlmKeys.embedModel,
@@ -83,6 +88,7 @@ export async function revealLlmKey(db: Db, id: string): Promise<RevealedKey | nu
   const rows = await db
     .select({
       cipher: orgLlmKeys.cipher,
+      apiType: orgLlmKeys.apiType,
       baseUrl: orgLlmKeys.baseUrl,
       chatModel: orgLlmKeys.chatModel,
       embedModel: orgLlmKeys.embedModel,
@@ -95,6 +101,7 @@ export async function revealLlmKey(db: Db, id: string): Promise<RevealedKey | nu
   if (!row) return null;
   return {
     apiKey: decryptSecret(row.cipher),
+    apiType: row.apiType,
     baseUrl: row.baseUrl,
     chatModel: row.chatModel,
     embedModel: row.embedModel,
@@ -107,6 +114,7 @@ export async function revealActiveLlmKey(db: Db, orgId: string): Promise<Reveale
   const rows = await db
     .select({
       cipher: orgLlmKeys.cipher,
+      apiType: orgLlmKeys.apiType,
       baseUrl: orgLlmKeys.baseUrl,
       chatModel: orgLlmKeys.chatModel,
       embedModel: orgLlmKeys.embedModel,
@@ -119,9 +127,15 @@ export async function revealActiveLlmKey(db: Db, orgId: string): Promise<Reveale
   if (!row) return null;
   return {
     apiKey: decryptSecret(row.cipher),
+    apiType: row.apiType,
     baseUrl: row.baseUrl,
     chatModel: row.chatModel,
     embedModel: row.embedModel,
     embedDim: row.embedDim,
   };
+}
+
+/** Whether a revealed key can produce real embeddings (chat-only providers cannot). */
+export function canEmbedKey(key: RevealedKey | null): boolean {
+  return key !== null && key.apiType !== "anthropic" && key.embedModel !== "";
 }

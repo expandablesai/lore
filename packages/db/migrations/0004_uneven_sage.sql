@@ -1,0 +1,2 @@
+ALTER TABLE "org_llm_keys" ADD COLUMN "api_type" text DEFAULT 'openai' NOT NULL;--> statement-breakpoint
+ALTER TABLE "org_llm_keys" ADD CONSTRAINT "api_type_domain" CHECK ("org_llm_keys"."api_type" IN ('openai', 'anthropic'));

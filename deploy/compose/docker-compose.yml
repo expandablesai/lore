@@ -34,6 +34,8 @@ services:
       LORE_ENCRYPTION_KEY: ${LORE_ENCRYPTION_KEY}
     ports:
       - "3001:3001"
+    volumes:
+      - /srv/lore/blobs:/srv/lore/blobs
     depends_on:
       db:
         condition: service_healthy
@@ -45,6 +47,8 @@ services:
   worker:
     image: ghcr.io/expandyne/lore:latest
     command: ["node", "apps/worker/dist/index.js"]
+    volumes:
+      - /srv/lore/blobs:/srv/lore/blobs
     environment:
       DATABASE_URL: postgresql://lore:${POSTGRES_PASSWORD:-lore}@db:5432/lore
       NODE_OPTIONS: "--max-old-space-size=512"

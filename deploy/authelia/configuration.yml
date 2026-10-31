@@ -30,6 +30,9 @@ authentication_backend:
 
 access_control:
   default_policy: one_factor
+  rules:
+    - domain: auth.dushyant.com
+      policy: bypass
 
 session:
   name: authelia_session
@@ -38,7 +41,8 @@ session:
   inactivity: 5m
   cookies:
     - domain: "dushyant.com"
-      authelia_url: "https://lore.dushyant.com"
+      authelia_url: "https://auth.dushyant.com"
+      default_redirection_url: "https://lore.dushyant.com"
 
 regulation:
   max_retries: 3

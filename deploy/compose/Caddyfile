@@ -1,19 +1,46 @@
-:80
+# Lore edge proxy.
+#
+# Authelia only accepts HTTPS targets (it refuses insecure schemes so session
+# cookies are always transmitted securely), so TLS terminates here with Caddy's
+# internal CA. When the Cloudflare Tunnel is wired up it should point at
+# https://caddy:443 with certificate verification disabled for the origin.
+#
+# Two hostnames:
+#   lore.dushyant.com  - the app (behind Authelia)
+#   auth.dushyant.com  - the Authelia portal (must stay reachable without auth)
 
-handle /api/* {
-	forward_auth authelia:9091 {
-		uri /api/verify?rd=https://lore.dushyant.com
-		copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
+(lore_app) {
+	handle /api/* {
+		forward_auth authelia:9091 {
+			uri /api/verify?rd=https://auth.dushyant.com
+			header_up X-Forwarded-Proto https
+			copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
+		}
+		reverse_proxy app:3001
 	}
-	reverse_proxy app:3001
+
+	handle {
+		forward_auth authelia:9091 {
+			uri /api/verify?rd=https://auth.dushyant.com
+			header_up X-Forwarded-Proto https
+			copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
+		}
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
 }
 
-handle {
-	forward_auth authelia:9091 {
-		uri /api/verify?rd=https://lore.dushyant.com
-		copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
-	}
-	root * /srv
-	try_files {path} /index.html
-	file_server
+https://lore.dushyant.com {
+	tls internal
+	import lore_app
+}
+
+https://auth.dushyant.com {
+	tls internal
+	reverse_proxy authelia:9091
+}
+
+http://lore.dushyant.com, http://auth.dushyant.com {
+	redir https://{host}{uri} 308
 }

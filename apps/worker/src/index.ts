@@ -1,13 +1,15 @@
 import { PgBoss } from "pg-boss";
 import { readFile } from "node:fs/promises";
-import { createDb } from "@lore/db";
+import { createDb, type Db, type RevealedKey } from "@lore/db";
 import {
   dominantEmbeddingModel,
+  getDocumentChunks,
   updateDocumentStatus,
   insertChunks,
   insertEmbeddings,
   deleteDocumentDerived,
   orderEmbedKeys,
+  pickVisionKey,
   revealActiveLlmKeys,
   JOB_DOCUMENT_INGEST,
   JOB_DOCUMENT_REPROCESS,
@@ -23,6 +25,16 @@ const SHUTDOWN_SIGNALS = ["SIGTERM", "SIGINT"] as const;
 /** MIME types that carry pictures rather than text. */
 const IMAGE_MIMES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
+/**
+ * How many chunk texts travel in one /v1/embeddings call.
+ *
+ * Providers cap a request (OpenAI: 2,048 inputs / ~300k tokens), so sending a
+ * whole book in one call is rejected outright and the document failed for good.
+ * 64 keeps a request small enough for every provider and still amortises the
+ * round trip.
+ */
+const EMBED_BATCH = 64;
+
 /** Resolve a storage key to a local file path. */
 function resolveStoragePath(storageKey: string): string {
   // Storage keys are relative paths under the blobs directory
@@ -30,8 +42,7 @@ function resolveStoragePath(storageKey: string): string {
   return `${blobsDir}/${storageKey}`;
 }
 
-/**
- * Read an image into indexable text.
+/** Read an image into indexable text.
  *
  * Nothing else in the pipeline can see a picture: there is no OCR step and the
  * text extractor refuses binary content. A vision model turns it into a
@@ -44,7 +55,6 @@ async function describeImage(
   buffer: Buffer,
   mime: string,
 ): Promise<ExtractionResult> {
-  const { pickVisionKey, revealActiveLlmKeys } = await import("@lore/db");
   const keys = await revealActiveLlmKeys(db, orgId);
   const target = pickVisionKey(keys);
   if (!target) {
@@ -65,7 +75,113 @@ async function describeImage(
   return { pages: null, text: description, pageCount: null, chunks: chunkText(description) };
 }
 
-/** Core ingestion logic: extract → chunk → embed → persist. */
+/** Vectors for a document's chunk texts, plus the space they belong to. */
+export interface EmbeddedChunks {
+  model: string;
+  dim: number;
+  vecs: Float32Array[];
+}
+
+/**
+ * Which keys may produce this document's vectors.
+ *
+ * Three distinct situations, and conflating them is what broke ingestion:
+ * - the org is indexed with local hash vectors, which are reproducible here, so
+ *   it keeps indexing in that space (a key can never match "hash", so treating
+ *   hash like a real stored model refused the *second* keyless upload forever);
+ * - a real stored model pins the org to the key that can reproduce it, because
+ *   vectors from different models are not comparable;
+ * - no vectors yet: any embed-capable key will do, newest first.
+ */
+export type EmbedPlan =
+  | { space: "hash" }
+  | { space: "pinned"; key: RevealedKey }
+  | { space: "candidates"; keys: RevealedKey[] }
+  | { space: "blocked"; error: string };
+
+export function planEmbedding(keys: RevealedKey[], storedModel: string | null): EmbedPlan {
+  if (storedModel === HASH_MODEL) return { space: "hash" };
+  const { matched, candidates } = orderEmbedKeys(keys, storedModel);
+  if (storedModel) {
+    return matched
+      ? { space: "pinned", key: matched }
+      : {
+          space: "blocked",
+          error: `no active key can embed with "${storedModel}", the model this org's vectors were indexed with — add a key using that model`,
+        };
+  }
+  return candidates.length > 0 ? { space: "candidates", keys: candidates } : { space: "hash" };
+}
+
+function hashEmbed(texts: string[]): EmbeddedChunks {
+  return {
+    model: HASH_MODEL,
+    dim: HASH_DIM,
+    vecs: texts.map((text) => deterministicEmbed(text, HASH_DIM)),
+  };
+}
+
+/** Embed with one key, in batches, insisting on one vector per input. */
+async function embedWithKey(key: RevealedKey, texts: string[]): Promise<EmbeddedChunks> {
+  const embedder = createOpenAIEmbedder({ apiKey: key.apiKey, baseUrl: key.baseUrl });
+  const vecs: Float32Array[] = [];
+  for (let start = 0; start < texts.length; start += EMBED_BATCH) {
+    const batch = texts.slice(start, start + EMBED_BATCH);
+    const got = await embedder.embed(batch, key.embedModel);
+    // A short reply used to be papered over with zero vectors: those chunks were
+    // reported as indexed, can never rank (a zero vector has no direction), and
+    // are never retried. Fail the document instead, so it shows up as failed.
+    if (got.length !== batch.length) {
+      throw new Error(
+        `embedder returned ${got.length} vectors for ${batch.length} inputs — refusing to index a partial reply`,
+      );
+    }
+    for (const vec of got) {
+      if (vec.length === 0) {
+        throw new Error("embedder returned an empty vector");
+      }
+      vecs.push(vec);
+    }
+  }
+  return { model: key.embedModel, dim: key.embedDim, vecs };
+}
+
+/**
+ * Turn a document's chunk texts into vectors in the org's existing space.
+ *
+ * When the space is pinned, only the matching key is tried: silently falling
+ * back to another model wrote vectors nothing could compare against, so the
+ * document claimed "indexed" while being unretrievable.
+ */
+async function embedChunks(
+  keys: RevealedKey[],
+  storedModel: string | null,
+  texts: string[],
+): Promise<EmbeddedChunks> {
+  const plan = planEmbedding(keys, storedModel);
+  if (plan.space === "hash") return hashEmbed(texts);
+  if (plan.space === "blocked") throw new Error(plan.error);
+
+  const attempts = plan.space === "pinned" ? [plan.key] : plan.keys;
+  let lastError: unknown = null;
+  for (const key of attempts) {
+    try {
+      return await embedWithKey(key, texts);
+    } catch (error) {
+      // Configured-for-embedding but refuses the call (no /v1/embeddings, wrong
+      // model name, unreachable host). Only worth another key when the org is
+      // not already pinned to this one.
+      lastError = error;
+      console.warn(
+        `embedding via ${key.baseUrl} (${key.embedModel}) failed:`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("every embedding key failed");
+}
+
+/** Core ingestion logic: extract → embed → write, atomically. */
 async function ingestDocument(
   db: ReturnType<typeof createDb>,
   payload: DocumentIngestPayload | DocumentReprocessPayload,
@@ -84,10 +200,26 @@ async function ingestDocument(
       ? await describeImage(db, orgId, buffer, mime)
       : await extractByMime(buffer, mime);
 
-    // Clear previous derived data (for reprocess)
-    await deleteDocumentDerived(db, documentId);
+    // A scan has no text layer; "indexed with 0 chunks" is a lie that also makes
+    // the dedupe path treat the file as already handled.
+    if (result.chunks.length === 0) {
+      throw new Error(
+        "no extractable text in this file — a scan or an image-only document has to be uploaded as an image",
+      );
+    }
 
-    // Insert chunks
+    // Embed *before* touching the database. Everything that can fail (no key,
+    // upstream refusal, short reply) fails here, while the previous index — for
+    // a reprocess — is still intact.
+    const keys = await revealActiveLlmKeys(db, orgId);
+    const storedModel = await dominantEmbeddingModel(db, orgId);
+    const embedded = await embedChunks(
+      keys,
+      storedModel,
+      result.chunks.map((c) => c.text),
+    );
+    const vecBySeq = new Map(result.chunks.map((chunk, index) => [chunk.seq, embedded.vecs[index]]));
+
     const chunkRows = result.chunks.map((c) => ({
       documentId,
       orgId,
@@ -97,94 +229,37 @@ async function ingestDocument(
       pageFrom: c.pageFrom,
       pageTo: c.pageTo,
     }));
-    await insertChunks(db, chunkRows);
 
-    // Embed chunks: real vectors when the key can embed, else deterministic hash.
-    // The key is chosen to match the model the org's existing vectors came from,
-    // so a new document lands in the same space as the ones already indexed.
-    const embeddingRows: Array<{
-      entityType: string;
-      entityId: string;
-      model: string;
-      dim: number;
-      vec: string;
-    }> = [];
-
-    // We need chunk IDs — re-query them
-    const { getDocumentChunks } = await import("@lore/db");
-    const storedChunks = await getDocumentChunks(db, documentId);
-
-    const keys = await revealActiveLlmKeys(db, orgId);
-    const storedModel = await dominantEmbeddingModel(db, orgId);
-    const { matched, candidates } = orderEmbedKeys(keys, storedModel);
-
-    // Existing vectors pin the org to one embedding space; a key that cannot
-    // reproduce it would add vectors nothing can be compared against.
-    if (storedModel && !matched) {
-      throw new Error(
-        `no active key can embed with "${storedModel}", the model this org's vectors were indexed with — add a key using that model`,
-      );
-    }
-
-    let embedded: { model: string; dim: number; vecs: Float32Array[] } | null = null;
-    let embedError: unknown = null;
-    for (const candidate of candidates) {
-      try {
-        const vecs = await createOpenAIEmbedder({
-          apiKey: candidate.apiKey,
-          baseUrl: candidate.baseUrl,
-        }).embed(storedChunks.map((c) => c.text), candidate.embedModel);
-        embedded = { model: candidate.embedModel, dim: candidate.embedDim, vecs };
-        break;
-      } catch (error) {
-        // Configured-for-embedding but refuses the call (no /v1/embeddings,
-        // wrong model name, unreachable host): try the next active key.
-        embedError = error;
-        console.warn(
-          `embedding via ${candidate.baseUrl} (${candidate.embedModel}) failed:`,
-          error instanceof Error ? error.message : error,
-        );
-      }
-    }
-    if (candidates.length > 0 && !embedded) {
-      throw embedError instanceof Error ? embedError : new Error("every embedding key failed");
-    }
-
-    if (embedded) {
-      for (let i = 0; i < storedChunks.length; i++) {
-        const chunk = storedChunks[i];
-        if (!chunk) continue;
-        embeddingRows.push({
+    // One transaction for the destructive part: delete, chunks, vectors and the
+    // final status land together or not at all. Before this, a failure halfway
+    // left committed chunks with missing vectors that retrieval would cite.
+    await db.transaction(async (tx) => {
+      // The transaction handle has the same query surface as Db; the helpers are
+      // typed against Db so they can be used inside and outside a transaction.
+      const scoped = tx as unknown as Db;
+      await deleteDocumentDerived(scoped, documentId);
+      await insertChunks(scoped, chunkRows);
+      const stored = await getDocumentChunks(scoped, documentId);
+      const embeddingRows = stored.map((chunk) => {
+        const vec = vecBySeq.get(chunk.seq);
+        if (!vec) throw new Error(`no vector for chunk ${chunk.seq}`);
+        return {
           entityType: "chunk",
           entityId: chunk.id,
           model: embedded.model,
           dim: embedded.dim,
-          vec: vectorToPgText(
-            zeroPad(embedded.vecs[i] ?? new Float32Array(embedded.dim), EMBEDDING_DIM),
-          ),
-        });
-      }
-    } else {
-      for (const chunk of storedChunks) {
-        const vec = deterministicEmbed(chunk.text, HASH_DIM);
-        const padded = zeroPad(vec, EMBEDDING_DIM);
-        embeddingRows.push({
-          entityType: "chunk",
-          entityId: chunk.id,
-          model: HASH_MODEL,
-          dim: HASH_DIM,
-          vec: vectorToPgText(padded),
-        });
-      }
-    }
-    await insertEmbeddings(db, embeddingRows);
-
-    // Mark indexed
-    await updateDocumentStatus(db, documentId, "indexed", {
-      pageCount: result.pageCount ?? undefined,
+          vec: vectorToPgText(zeroPad(vec, EMBEDDING_DIM)),
+        };
+      });
+      await insertEmbeddings(scoped, embeddingRows);
+      await updateDocumentStatus(scoped, documentId, "indexed", {
+        pageCount: result.pageCount ?? undefined,
+      });
     });
 
-    console.log(`document ${documentId} indexed: ${result.chunks.length} chunks, ${embeddingRows.length} embeddings`);
+    console.log(
+      `document ${documentId} indexed: ${result.chunks.length} chunks, model ${embedded.model}`,
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await updateDocumentStatus(db, documentId, "failed", { error: message });

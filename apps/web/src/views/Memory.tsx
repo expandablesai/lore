@@ -29,6 +29,10 @@ export function Memory({ token, user, navigate }: ViewProps) {
   const [predicate, setPredicate] = useState("");
   const [object, setObject] = useState("");
   const [sources, setSources] = useState("");
+  // Remembering has its own scope. Sharing the Recall selector's state meant a
+  // fact written after searching "personal" was stored personal — invisible to
+  // the organisation — with no control on the form saying so.
+  const [rememberScope, setRememberScope] = useState<Scope>("org");
   const [rememberError, setRememberError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -56,7 +60,7 @@ export function Memory({ token, user, navigate }: ViewProps) {
         .map((s) => s.trim())
         .filter(Boolean);
       await api.remember(token, {
-        scope,
+        scope: rememberScope,
         subject,
         predicate,
         object,
@@ -102,7 +106,24 @@ export function Memory({ token, user, navigate }: ViewProps) {
             <Field label="Predicate" value={predicate} onChange={(e) => setPredicate(e.target.value)} required />
             <Field label="Object" value={object} onChange={(e) => setObject(e.target.value)} required />
           </div>
-          <Field label="Sources (comma-separated)" value={sources} onChange={(e) => setSources(e.target.value)} placeholder="notes.txt, https://…" />
+          <div className="grid gap-3 sm:grid-cols-[1fr_12rem] sm:items-end">
+            <Field label="Sources (comma-separated)" value={sources} onChange={(e) => setSources(e.target.value)} placeholder="notes.txt, https://…" />
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-slate-400">Scope</span>
+              <select
+                aria-label="Fact scope"
+                value={rememberScope}
+                onChange={(e) => setRememberScope(e.target.value as Scope)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100"
+              >
+                {SCOPES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           {rememberError && <ErrorNote message={rememberError} />}
           <Button type="submit" disabled={saving}>
             {saving ? "Saving…" : "Remember"}
@@ -119,6 +140,7 @@ export function Memory({ token, user, navigate }: ViewProps) {
           <label className="block space-y-1.5">
             <span className="text-sm font-medium text-slate-300">Scope</span>
             <select
+              aria-label="Recall scope"
               value={scope}
               onChange={(e) => setScope(e.target.value as Scope)}
               className="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100"

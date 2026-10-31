@@ -69,6 +69,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     saveToken(res.token);
     setToken(res.token);
     setUser(res.user);
+    // The profile (theme, neon, avatar) lives on /me, not on the session
+    // response; without this the shell shows initials and Profile offers
+    // "Upload picture" until the page is reloaded.
+    void api.me(res.token).then(setMe).catch(() => setMe(null));
   }, []);
 
   const signup = useCallback(async (input: SignupInput) => {
@@ -76,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     saveToken(res.token);
     setToken(res.token);
     setUser(res.user);
+    void api.me(res.token).then(setMe).catch(() => setMe(null));
   }, []);
 
   const logout = useCallback(() => {

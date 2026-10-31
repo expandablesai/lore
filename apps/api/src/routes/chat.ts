@@ -86,12 +86,18 @@ async function queryVectorFor(
   question: string,
 ): Promise<{ vec: Float32Array; model: string }> {
   if (key && canEmbedKey(key)) {
-    const embedded = await createOpenAIEmbedder({ apiKey: key.apiKey, baseUrl: key.baseUrl }).embed(
-      question,
-      key.embedModel,
-    );
-    const first = embedded[0];
-    if (first) return { vec: first, model: key.embedModel };
+    try {
+      const embedded = await createOpenAIEmbedder({ apiKey: key.apiKey, baseUrl: key.baseUrl }).embed(
+        question,
+        key.embedModel,
+      );
+      const first = embedded[0];
+      if (first) return { vec: first, model: key.embedModel };
+    } catch {
+      // An embedder that is down or misconfigured must not take the whole
+      // answer with it: retrieval falls back to the local space, the reply is
+      // still produced, and the images/provenance paths stay intact.
+    }
   }
   return { vec: deterministicEmbed(question, HASH_DIM), model: HASH_MODEL };
 }

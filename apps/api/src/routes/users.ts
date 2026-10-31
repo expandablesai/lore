@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { extname, join } from "node:path";
@@ -15,6 +15,15 @@ import type { FastifyPluginAsync } from "fastify";
 import type { AuthenticatedUser } from "../plugins/auth-guard.ts";
 
 const ROLE_RANK: Record<string, number> = { viewer: 0, member: 1, org_admin: 2, superadmin: 3 };
+
+/**
+ * Roles an org admin may hand out. `superadmin` is deliberately absent: it is
+ * the one role that crosses orgs, and it must not be reachable from a body field
+ * an admin controls.
+ */
+const ASSIGNABLE_ROLES = new Set(["viewer", "member", "org_admin"]);
+/** Mirrors the `user_status` enum. */
+const USER_STATUSES = new Set(["active", "disabled"]);
 
 /** Where uploaded files live (shared with the document store). */
 function blobsDir(): string {
@@ -155,16 +164,33 @@ export const createUserRoutes: (db: Db) => FastifyPluginAsync = (db) => async (a
     }},
     async (request, reply) => {
       const { role, status } = request.body;
+      // Both fields land in enum columns, so an unchecked value is either a
+      // database error or a privilege escalation: every signup is an
+      // org_admin, and {"role":"superadmin"} used to be accepted verbatim.
+      if (role !== undefined && !ASSIGNABLE_ROLES.has(role)) {
+        return reply.code(400).send({ error: "role must be viewer, member or org_admin" });
+      }
+      if (status !== undefined && !USER_STATUSES.has(status)) {
+        return reply.code(400).send({ error: "status must be active or disabled" });
+      }
+      if (role && (ROLE_RANK[role] ?? 0) > (ROLE_RANK[request.user.role] ?? 0)) {
+        return reply.code(403).send({ error: "cannot grant a role above your own" });
+      }
       const set: Record<string, unknown> = {};
       if (role) set.role = role;
       if (status) set.status = status;
       if (Object.keys(set).length === 0) return reply.code(400).send({ error: "no fields" });
-      await db.update(users).set(set).where(eq(users.id, request.params.userId));
-      await db.insert(audit).values({ orgId: request.params.orgId, actorId: request.user.id, action: "user.patch", targetType: "user", targetIds: [request.params.userId], detail: set, ip: request.ip });
-      const rows = await db.select().from(users).where(eq(users.id, request.params.userId)).limit(1);
-      const u = rows[0];
+      // Scoped by org as well as id: matching on users.id alone let org A's
+      // admin disable or demote an account in org B.
+      const updated = await db
+        .update(users)
+        .set(set)
+        .where(and(eq(users.orgId, request.params.orgId), eq(users.id, request.params.userId)))
+        .returning({ id: users.id, email: users.email, role: users.role, status: users.status });
+      const u = updated[0];
       if (!u) return reply.code(404).send({ error: "not found" });
-      return { id: u.id, email: u.email, role: u.role, status: u.status };
+      await db.insert(audit).values({ orgId: request.params.orgId, actorId: request.user.id, action: "user.patch", targetType: "user", targetIds: [request.params.userId], detail: set, ip: request.ip });
+      return u;
     },
   );
 };

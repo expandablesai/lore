@@ -200,10 +200,17 @@ export function Shell() {
               active={chat.id === activeChatId}
               onOpen={() => navigate(`/chat/${chat.id}`)}
               onDelete={() => {
-                void api.deleteChat(token, chat.id).then(() => {
-                  loadChats();
-                  if (chat.id === activeChatId) navigate("/chat");
-                });
+                // A delete that fails (offline, or the chat is already gone in
+                // another tab) must not vanish into an unhandled rejection: the
+                // list is reloaded so the row reflects what the server actually
+                // holds instead of looking as if the click did nothing.
+                void api
+                  .deleteChat(token, chat.id)
+                  .then(() => {
+                    loadChats();
+                    if (chat.id === activeChatId) navigate("/chat");
+                  })
+                  .catch(() => loadChats());
               }}
             />
           ))}

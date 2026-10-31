@@ -93,3 +93,23 @@ describe("vectorToPgText", () => {
     }
   });
 });
+
+describe("zeroPad — fitting the pgvector column", () => {
+  it("pads a shorter vector with zeros", () => {
+    const fitted = zeroPad(new Float32Array([0.5, -0.5]), 8);
+    expect(fitted).toHaveLength(8);
+    expect(Array.from(fitted.slice(0, 2))).toEqual([0.5, -0.5]);
+    expect(fitted[7]).toBe(0);
+  });
+
+  it("truncates a longer vector instead of overflowing the column", () => {
+    const vec = new Float32Array(4096).fill(0.25);
+    const fitted = zeroPad(vec, EMBEDDING_DIM);
+    expect(fitted).toHaveLength(EMBEDDING_DIM);
+    expect(fitted[EMBEDDING_DIM - 1]).toBeCloseTo(0.25, 5);
+  });
+
+  it("leaves a vector already at the target length alone", () => {
+    expect(zeroPad(new Float32Array(EMBEDDING_DIM).fill(0.1), EMBEDDING_DIM)).toHaveLength(EMBEDDING_DIM);
+  });
+});

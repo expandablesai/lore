@@ -54,13 +54,19 @@ export function chunkText(
       flush();
     }
     if (para.length > targetChars) {
-      // Hard-split oversized paragraphs on sentence boundaries
+      // Split on sentence boundaries where there are any. A "sentence" with no
+      // terminator (minified JSON, base64, one long log line, CJK prose) can be
+      // the whole paragraph, so every piece is also hard-cut to target size —
+      // otherwise the chunk is unbounded and the embed call is rejected.
       const sentences = para.split(/(?<=[.!?])\s+/);
       for (const sentence of sentences) {
-        if (buffer.length + sentence.length + 1 > targetChars && buffer.length > 0) {
-          flush();
+        for (let at = 0; at < sentence.length; at += targetChars) {
+          const piece = sentence.slice(at, at + targetChars);
+          if (buffer.length + piece.length + 1 > targetChars && buffer.length > 0) {
+            flush();
+          }
+          buffer += (buffer ? " " : "") + piece;
         }
-        buffer += (buffer ? " " : "") + sentence;
       }
     } else {
       buffer += (buffer ? "\n\n" : "") + para;

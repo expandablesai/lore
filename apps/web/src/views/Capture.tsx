@@ -2,7 +2,7 @@
 // or images in, press Enter (or Save), and the console writes them into the
 // workspace and reports exactly what was stored and indexed — with the
 // timestamps and the person who saved it.
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ClipboardEvent, FormEvent, KeyboardEvent } from "react";
 import { api } from "../lib/api";
 import type { DocumentDetail, DocumentSummary } from "../lib/types";
@@ -55,11 +55,21 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** Poll one document until the worker has finished with it. */
-async function settle(token: string, id: string): Promise<DocumentDetail | null> {
+/**
+ * Poll one document until the worker has finished with it.
+ *
+ * `alive` is checked between polls: leaving the page mid-ingestion used to keep
+ * a 2-second request loop running for two minutes per file, then write state
+ * into a component that was no longer mounted.
+ */
+async function settle(
+  token: string,
+  id: string,
+  alive: () => boolean,
+): Promise<DocumentDetail | null> {
   const deadline = Date.now() + 120_000;
   let latest: DocumentDetail | null = null;
-  while (Date.now() < deadline) {
+  while (Date.now() < deadline && alive()) {
     const res = await api.document(token, id);
     latest = res.document;
     if (res.document.status === "indexed" || res.document.status === "failed") return res.document;
@@ -75,6 +85,31 @@ export function Capture({ token, navigate }: ViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const textarea = useRef<HTMLTextAreaElement>(null);
+
+  // Previews are object URLs: they hold the whole image in memory until they
+  // are revoked, so somebody has to do it — on remove, on save, on unmount.
+  const alive = useRef(true);
+  const pendingRef = useRef<Pending[]>([]);
+  useEffect(() => {
+    pendingRef.current = pending;
+  }, [pending]);
+  useEffect(
+    () => () => {
+      alive.current = false;
+      for (const item of pendingRef.current) {
+        if (item.preview) URL.revokeObjectURL(item.preview);
+      }
+    },
+    [],
+  );
+
+  const dropPending = useCallback((key: string) => {
+    setPending((prev) => {
+      const gone = prev.find((item) => item.key === key);
+      if (gone?.preview) URL.revokeObjectURL(gone.preview);
+      return prev.filter((item) => item.key !== key);
+    });
+  }, []);
 
   const addFiles = useCallback((files: File[]) => {
     const usable = files.filter(
@@ -137,11 +172,13 @@ export function Capture({ token, navigate }: ViewProps) {
 
     const collected: Receipt[] = [];
     for (const job of jobs) {
+      let uploadedId = "";
       try {
         const uploaded = await api.uploadDocument(token, job.file, "org");
+        uploadedId = uploaded.id;
         collected.push({ id: uploaded.id, name: job.name, status: "queued", detail: null, error: null });
         setReceipts([...collected]);
-        const settled = await settle(token, uploaded.id);
+        const settled = await settle(token, uploaded.id, () => alive.current);
         const updated: Receipt = {
           id: uploaded.id,
           name: job.name,
@@ -153,11 +190,29 @@ export function Capture({ token, navigate }: ViewProps) {
         collected[at] = updated;
         setReceipts([...collected]);
       } catch (e) {
-        collected.push({ id: "", name: job.name, status: "failed", detail: null, error: errMessage(e) });
+        // The upload may have succeeded and only the *poll* failed; pushing a
+        // second receipt would show the same file twice, once queued and once
+        // failed. Update the row that is already on screen.
+        const at = collected.findIndex((r) => r.id !== "" && r.id === uploadedId);
+        const failed: Receipt = {
+          id: uploadedId,
+          name: job.name,
+          status: "failed",
+          detail: null,
+          error: errMessage(e),
+        };
+        if (at >= 0) collected[at] = failed;
+        else collected.push(failed);
         setReceipts([...collected]);
       }
     }
 
+    // Navigating away mid-ingestion: nothing on screen should change any more.
+    if (!alive.current) return;
+
+    for (const item of pending) {
+      if (item.preview) URL.revokeObjectURL(item.preview);
+    }
     setBusy(false);
     setText("");
     setPending([]);
@@ -216,7 +271,7 @@ export function Capture({ token, navigate }: ViewProps) {
                   <button
                     type="button"
                     aria-label={`Remove ${item.name}`}
-                    onClick={() => setPending((prev) => prev.filter((p) => p.key !== item.key))}
+                    onClick={() => dropPending(item.key)}
                     className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-slate-900/90 text-xs text-slate-300"
                   >
                     ×

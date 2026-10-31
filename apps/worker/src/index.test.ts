@@ -2,6 +2,7 @@
 // (canEmbedKey) decides real vectors vs deterministic hash.
 import { describe, expect, it } from "vitest";
 import { canEmbedKey, type RevealedKey } from "@lore/db";
+import { planEmbedding } from "./index.ts";
 
 function key(over: Partial<RevealedKey>): RevealedKey {
   return {
@@ -31,5 +32,39 @@ describe("embed path gate (canEmbedKey)", () => {
   });
   it("anthropic key with blank embedding model cannot embed", () => {
     expect(canEmbedKey(key({ apiType: "anthropic", embedModel: "" }))).toBe(false);
+  });
+});
+
+describe("embedding plan (which vector space a document lands in)", () => {
+  it("keeps indexing in the deterministic space instead of blocking on 'hash'", () => {
+    // A key can never be named "hash", so treating hash like a real stored model
+    // refused the second upload on a keyless install forever.
+    expect(planEmbedding([key({})], "hash")).toEqual({ space: "hash" });
+    expect(planEmbedding([], "hash")).toEqual({ space: "hash" });
+  });
+
+  it("pins to the key that reproduces a stored model", () => {
+    const nomic = key({ embedModel: "nomic-embed-text", embedDim: 768 });
+    const plan = planEmbedding(
+      [key({ embedModel: "text-embedding-3-large" }), nomic],
+      "nomic-embed-text",
+    );
+    expect(plan).toEqual({ space: "pinned", key: nomic });
+  });
+
+  it("refuses rather than mixing models when no key matches the stored space", () => {
+    const plan = planEmbedding([key({ embedModel: "text-embedding-3-large" })], "nomic-embed-text");
+    expect(plan.space).toBe("blocked");
+    if (plan.space === "blocked") expect(plan.error).toContain("nomic-embed-text");
+  });
+
+  it("uses any embed-capable key when the org has no vectors yet", () => {
+    expect(planEmbedding([key({}), key({ embedModel: "nomic-embed-text" })], null).space).toBe("candidates");
+  });
+
+  it("falls back to hash when the only keys cannot embed", () => {
+    expect(planEmbedding([key({ apiType: "anthropic", embedModel: "claude-embed" })], null)).toEqual({
+      space: "hash",
+    });
   });
 });

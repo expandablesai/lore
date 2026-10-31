@@ -97,3 +97,26 @@ describe("chunkRows", () => {
     expect(chunks).toHaveLength(3); // 1200 / 500 = 2.4 → 3 chunks
   });
 });
+
+describe("chunkText — oversized content without sentence boundaries", () => {
+  it("hard-cuts a paragraph that has no sentence terminators", () => {
+    // Minified JSON, base64 or one long log line: no ".!?" to split on, so the
+    // old code produced a single unbounded chunk and the embed call was rejected.
+    const blob = "x".repeat(5000);
+    const chunks = chunkText(blob, 100); // 400 characters per chunk
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(chunk.text.length).toBeLessThanOrEqual(400);
+    }
+    const total = chunks.reduce((sum, chunk) => sum + chunk.text.length, 0);
+    expect(total).toBeGreaterThanOrEqual(blob.length);
+  });
+
+  it("hard-cuts long lines inside a paragraph that does have sentences", () => {
+    const text = `${"a".repeat(3000)}. ${"b".repeat(3000)}.`;
+    const chunks = chunkText(text, 100);
+    for (const chunk of chunks) {
+      expect(chunk.text.length).toBeLessThanOrEqual(400);
+    }
+  });
+});

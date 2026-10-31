@@ -48,13 +48,18 @@ export function deterministicEmbed(text: string, dim: number = HASH_DIM): Float3
 }
 
 /**
- * Zero-pad a shorter vector to the full 1536 dimension.
- * Zero-padding preserves cosine similarity exactly (dot product and both
- * norms are unchanged) — so a 1024-dim model is indexed and queried
- * correctly alongside a 1536-dim one.
+ * Fit a vector to the pgvector column's dimension.
+ *
+ * Shorter vectors are zero-padded, which preserves cosine similarity exactly
+ * (dot product and both norms are unchanged), so a 768- or 1024-dim model is
+ * indexed and queried correctly next to a 3072-dim one. A model that returns
+ * *more* than the column holds is truncated to the first `targetDim` values —
+ * the column rejects anything longer, and truncating both the index and the
+ * query the same way keeps the space consistent instead of failing every upload.
  */
 export function zeroPad(vec: Float32Array, targetDim: number = EMBEDDING_DIM): Float32Array {
-  if (vec.length >= targetDim) return vec;
+  if (vec.length === targetDim) return vec;
+  if (vec.length > targetDim) return vec.slice(0, targetDim);
   const padded = new Float32Array(targetDim);
   padded.set(vec);
   return padded;

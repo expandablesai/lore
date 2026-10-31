@@ -8,6 +8,8 @@ declare module "fastify" {
 }
 
 const ROLE_RANK: Record<string, number> = { viewer: 0, member: 1, org_admin: 2, superadmin: 3 };
+/** Roles an org admin may hand out; superadmin crosses orgs and is excluded. */
+const ASSIGNABLE_ROLES = new Set(["viewer", "member", "org_admin"]);
 function hasRole(user: AuthenticatedUser, min: string): boolean {
   return (ROLE_RANK[user.role] ?? 0) >= (ROLE_RANK[min] ?? 99);
 }
@@ -80,11 +82,21 @@ export const createOrgRoutes: (db: Db) => FastifyPluginAsync = (db) => async (ap
     }},
     async (request, reply) => {
       const { email, displayName, password, role } = request.body;
+      // Creating a user is the other way to hand out a rank: the body used to be
+      // cast straight into the enum, so an org admin could mint a superadmin and
+      // log in as it. Only roles at or below the caller's own are creatable.
+      const wanted = role ?? "member";
+      if (!ASSIGNABLE_ROLES.has(wanted)) {
+        return reply.code(400).send({ error: "role must be viewer, member or org_admin" });
+      }
+      if ((ROLE_RANK[wanted] ?? 0) > (ROLE_RANK[request.user.role] ?? 0)) {
+        return reply.code(403).send({ error: "cannot create a user with a role above your own" });
+      }
       const { hash } = await import("@node-rs/argon2");
       const passwordHash = await hash(password);
       const inserted = await db.insert(users).values({
         orgId: request.params.id, email, displayName, passwordHash,
-        role: role as "member" | "viewer" | "org_admin",
+        role: wanted as "member" | "viewer" | "org_admin",
       }).returning();
       const user = inserted[0];
       if (!user) throw new Error("user insert failed");

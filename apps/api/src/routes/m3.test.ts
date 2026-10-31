@@ -83,6 +83,97 @@ describe("M3 ingestion: document upload, dedupe, list, read, reprocess", () => {
     expect(json.status).toBe("queued");
   });
 
+  test("POST /documents/upload honours the scope form field", async () => {
+    const content = `Scoped upload ${crypto.randomUUID()}`;
+    const boundary = "----M3Scope";
+    // The console appends the file before the field, so the field arrives
+    // *after* the file stream — the order that used to be dropped entirely.
+    const body = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="scoped.txt"',
+      "Content-Type: text/plain",
+      "",
+      content,
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="scope"',
+      "",
+      "org",
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    const up = await app.inject({
+      method: "POST",
+      url: "/documents/upload",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": `multipart/form-data; boundary=${boundary}`,
+      },
+      payload: body,
+    });
+    expect(up.statusCode).toBe(202);
+    const id = (up.json() as { id: string }).id;
+
+    const read = await app.inject({
+      method: "GET",
+      url: `/documents/${id}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(read.statusCode).toBe(200);
+    expect((read.json() as { document: { scope: string } }).document.scope).toBe("org");
+  });
+
+  test("POST /documents/upload rejects an unknown scope", async () => {
+    const boundary = "----M3BadScope";
+    const body = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="bad-scope.txt"',
+      "Content-Type: text/plain",
+      "",
+      "scope must be one of three",
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="scope"',
+      "",
+      "everywhere",
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    const r = await app.inject({
+      method: "POST",
+      url: "/documents/upload",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": `multipart/form-data; boundary=${boundary}`,
+      },
+      payload: body,
+    });
+    expect(r.statusCode).toBe(400);
+    expect((r.json() as { error: string }).error).toContain("scope");
+  });
+
+  test("POST /documents/upload rejects an empty file", async () => {
+    const boundary = "----M3EmptyFile";
+    const body = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="empty.txt"',
+      "Content-Type: text/plain",
+      "",
+      "",
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    const r = await app.inject({
+      method: "POST",
+      url: "/documents/upload",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": `multipart/form-data; boundary=${boundary}`,
+      },
+      payload: body,
+    });
+    expect(r.statusCode).toBe(400);
+    expect((r.json() as { error: string }).error).toContain("empty");
+  });
+
   test("POST /documents/upload deduplicates by SHA-256", async () => {
     const content = "Duplicate content test for dedupe verification.";
     const boundary = "----M3DedupeBoundary";

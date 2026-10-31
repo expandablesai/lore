@@ -82,21 +82,62 @@ export const createDocumentRoutes: (db: Db) => FastifyPluginAsync = (db) => asyn
   };
 
   // POST /documents/upload — multipart file upload
-  app.post<{
-    Body: { scope?: string };
-  }>("/upload", async (request, reply) => {
+  app.post("/upload", async (request, reply) => {
     const user = request.user as AuthenticatedUser;
     if (!user) return reply.code(401).send({ error: "unauthorized" });
 
-    const scope = (request.body?.scope ?? "personal") as "personal" | "project" | "org";
+    // Read the parts by hand rather than `request.file()`: form fields are not
+    // put on `request.body` for multipart, so a caller's `scope` used to be
+    // dropped and every upload was stamped "personal" no matter what it asked
+    // for. The file stream has to be consumed inside the loop — the iterator
+    // will not hand out the next part until it is drained.
+    const buffers: Buffer[] = [];
+    let filename = "";
+    let partMime = "";
+    let truncated = false;
+    let rawScope: string | undefined;
 
-    const file = await request.file();
-    if (!file) {
-      return reply.code(400).send({ error: "multipart file required" });
+    for await (const part of request.parts()) {
+      if (part.type === "file") {
+        if (filename !== "") {
+          part.file.resume();
+          continue;
+        }
+        filename = part.filename;
+        partMime = part.mimetype;
+        for await (const piece of part.file) buffers.push(piece as Buffer);
+        truncated = part.file.truncated;
+      } else if (part.fieldname === "scope") {
+        rawScope = String(part.value);
+      }
     }
 
+    if (filename === "") {
+      return reply.code(400).send({ error: "multipart file required" });
+    }
+    if (truncated) {
+      return reply.code(413).send({ error: "the file is larger than the 50 MB limit" });
+    }
+
+    const SCOPES = new Set(["personal", "project", "org"]);
+    const requestedScope = rawScope ?? "personal";
+    if (!SCOPES.has(requestedScope)) {
+      return reply
+        .code(400)
+        .send({ error: 'scope must be "personal", "project" or "org"' });
+    }
+    const scope = requestedScope as "personal" | "project" | "org";
+
+    const buffer = Buffer.concat(buffers);
+    // A zero-byte upload produces no chunks and no embeddings; it used to be
+    // accepted, indexed as nothing, and then sit in the library as a failure.
+    if (buffer.length === 0) {
+      return reply.code(400).send({ error: "the file is empty — there is nothing to index" });
+    }
+    const sizeBytes = buffer.length;
+
     // Determine MIME type
-    const mime = file.mimetype || mimeFromExtension(extname(file.filename)) || "application/octet-stream";
+    const mime = partMime || mimeFromExtension(extname(filename)) || "application/octet-stream";
     if (IMAGE_MIMES.has(mime)) {
       const keys = await revealActiveLlmKeys(db, user.orgId);
       if (keys.length === 0) {
@@ -110,9 +151,7 @@ export const createDocumentRoutes: (db: Db) => FastifyPluginAsync = (db) => asyn
     }
 
     // Read file buffer and compute SHA-256
-    const buffer = await file.toBuffer();
     const sha256 = createHash("sha256").update(buffer).digest("hex");
-    const sizeBytes = buffer.length;
 
     // Dedupe: same bytes already uploaded to this org
     const existing = await findDocumentByHash(db, user.orgId, sha256);
@@ -145,23 +184,35 @@ export const createDocumentRoutes: (db: Db) => FastifyPluginAsync = (db) => asyn
     // Store blob to disk
     const dir = blobsDir();
     await mkdir(dir, { recursive: true });
-    const storageKey = `${sha256}${extname(file.filename)}`;
+    const storageKey = `${sha256}${extname(filename)}`;
     const filePath = join(dir, storageKey);
     await writeFile(filePath, buffer);
 
-    // Insert document row
-    const doc = await insertDocument(db, {
-      orgId: user.orgId,
-      projectId: null,
-      ownerUserId: user.id,
-      uploadedBy: user.id,
-      scope,
-      filename: file.filename,
-      mime,
-      sizeBytes,
-      sha256,
-      storageKey,
-    });
+    // Insert document row. Two concurrent uploads of the same bytes can both get
+    // past the dedupe check above; the unique (org_id, sha256) index decides, and
+    // the loser reports the dedupe answer the winner would have given rather than
+    // surfacing a 500 for a duplicate.
+    let doc;
+    try {
+      doc = await insertDocument(db, {
+        orgId: user.orgId,
+        projectId: null,
+        ownerUserId: user.id,
+        uploadedBy: user.id,
+        scope,
+        filename,
+        mime,
+        sizeBytes,
+        sha256,
+        storageKey,
+      });
+    } catch (error) {
+      const raced = await findDocumentByHash(db, user.orgId, sha256);
+      if (raced) {
+        return reply.code(200).send({ id: raced.id, deduplicated: true, status: raced.status });
+      }
+      throw error;
+    }
 
     // Enqueue ingestion job
     const bossInstance = await getBoss();

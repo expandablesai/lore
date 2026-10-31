@@ -4,7 +4,7 @@
 // a new chat, and the first question creates the thread (named after itself) so
 // it appears in the sidebar immediately. Enter sends, Shift+Enter adds a line,
 // and an in-progress IME composition keeps its Enter.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -51,10 +51,24 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [viewing, setViewing] = useState<ChatImage | null>(null);
 
+  // The conversation the route points at, mirrored in a ref: an answer that
+  // arrives after the user has opened another chat has to be recognised as
+  // stale, because this component is reused across /chat/:id routes and the
+  // transcript on screen is no longer the one that asked.
+  const shown = useRef(chatId);
+  useEffect(() => {
+    shown.current = chatId;
+  }, [chatId]);
+
   // Opening a saved conversation replaces the transcript; a new chat starts empty.
   useEffect(() => {
     if (!chatId) {
       setTurns([]);
+      // The previous chat's history request is now irrelevant: its cleanup only
+      // clears a flag this effect never sets again, so the spinner has to be
+      // cleared here or "Loading conversation…" outlives the conversation.
+      setLoadingHistory(false);
+      setError(null);
       return;
     }
     let active = true;
@@ -82,6 +96,7 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
   const send = useCallback(async () => {
     const text = draft.trim();
     if (!text || sending) return;
+    const askedIn = chatId;
     const asked: Turn[] = [...turns, { role: "user", content: text }];
     setTurns(asked);
     setDraft("");
@@ -93,6 +108,9 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
         // The wire format carries text only; images are retrieved server-side.
         messages: asked.map((t) => ({ role: t.role, content: t.content })),
       });
+      // Asked in one conversation, answered after the user opened another: drop
+      // the reply instead of appending it to someone else's transcript.
+      if (shown.current !== askedIn) return;
       setTurns((prev) => [
         ...prev,
         { role: res.message.role, content: res.message.content, images: res.images ?? [] },
@@ -102,7 +120,18 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
       // sidebar entry and a reload both point at the conversation.
       if (!chatId) navigate(`/chat/${res.chatId}`);
     } catch (e) {
-      setError(errMessage(e));
+      if (shown.current === askedIn) {
+        // Nothing was stored, so the optimistic turn is a lie: take it back and
+        // return the text to the composer, or the next question re-sends a
+        // message that never went anywhere.
+        setTurns((prev) =>
+          prev.length === asked.length && prev[prev.length - 1]?.content === text
+            ? asked.slice(0, -1)
+            : prev,
+        );
+        setDraft((current) => (current.trim() === "" ? text : current));
+        setError(errMessage(e));
+      }
     } finally {
       setSending(false);
     }

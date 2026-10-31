@@ -150,7 +150,7 @@ export const createLlmKeyRoutes: (db: Db) => FastifyPluginAsyncZod = (db) => asy
       if (request.params.id !== request.user.orgId || !isOrgAdmin(request.user)) {
         return reply.code(403).send({ error: "forbidden" });
       }
-      const key = await revealLlmKey(db, request.params.keyId);
+      const key = await revealLlmKey(db, request.params.id, request.params.keyId);
       if (!key) return reply.code(404).send({ error: "not found" });
 
       let chatError: string | null = null;
@@ -217,10 +217,10 @@ export const createLlmKeyRoutes: (db: Db) => FastifyPluginAsyncZod = (db) => asy
       if (request.params.id !== request.user.orgId || !isOrgAdmin(request.user)) {
         return reply.code(403).send({ error: "forbidden" });
       }
-      const key = await revealLlmKey(db, request.params.keyId);
+      const key = await revealLlmKey(db, request.params.id, request.params.keyId);
       if (!key) return reply.code(404).send({ error: "not found" });
       try {
-        const models = await listModels({ apiKey: key.apiKey, baseUrl: key.baseUrl });
+        const models = await listModels({ apiKey: key.apiKey, baseUrl: key.baseUrl, apiType: key.apiType === "anthropic" ? "anthropic" : "openai" });
         return { ok: true, models };
       } catch (e) {
         return reply

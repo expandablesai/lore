@@ -3,6 +3,9 @@ import { createDb, type Db } from "@lore/db";
 import type { FastifyInstance } from "fastify";
 import { createApp } from "../app.ts";
 
+// Storing an LLM key encrypts it, so the key material has to be present.
+process.env.LORE_ENCRYPTION_KEY ??= "0".repeat(64);
+
 const DATABASE_URL = process.env.DATABASE_URL ?? "postgresql://lore:lore@localhost:5432/lore_test";
 
 describe("M2 memory: events hash-chain, T0-never-confirmed, forget cascade", () => {
@@ -156,5 +159,39 @@ describe("M2 memory: events hash-chain, T0-never-confirmed, forget cascade", () 
     expect(r.statusCode).toBe(200);
     const body = r.json() as Array<{ id: string; scope: string }>;
     expect(Array.isArray(body)).toBe(true);
+  });
+
+  test("POST /recall degrades instead of failing when no key can embed", async () => {
+    const remembered = await app.inject({
+      method: "POST", url: "/remember",
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        scope: "personal", subject: "orchid", predicate: "is", object: "purple",
+        sources: [{ type: "event", id: crypto.randomUUID() }], trust: 1,
+      },
+    });
+    expect(remembered.statusCode).toBe(201);
+
+    // Nothing listens on port 9, so this key's embedder cannot answer. Recall
+    // must fall back to the local vector space and still return the lexical
+    // match — the newest-key shortcut used to 500 the whole request here.
+    const key = await app.inject({
+      method: "POST", url: `/orgs/${orgId}/llm-keys`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        label: "dead-embedder", apiKey: "sk-dead-embedder", provider: "custom",
+        baseUrl: "http://127.0.0.1:9/v1", chatModel: "ghost", embedModel: "ghost-embed", embedDim: 3072,
+      },
+    });
+    expect(key.statusCode).toBe(201);
+
+    const r = await app.inject({
+      method: "POST", url: "/recall",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { query: "orchid", scope: "personal" },
+    });
+    expect(r.statusCode).toBe(200);
+    const body = r.json() as Array<{ subject: string }>;
+    expect(body.some((a) => a.subject === "orchid")).toBe(true);
   });
 });

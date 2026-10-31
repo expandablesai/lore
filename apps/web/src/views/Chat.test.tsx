@@ -197,6 +197,53 @@ describe("Chat images", () => {
     await userEvent.type(screen.getByLabelText("Message"), "who is Chen Lian{Enter}");
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.getByText("Nothing visual here.")).toBeInTheDocument());
-    // The brain mark is an <img> too; assert on attachments specifically.\n    expect(screen.queryByAltText(/\\.png$/)).not.toBeInTheDocument();
+    // The brain mark is an <img> too; assert on attachments specifically.
+    expect(screen.queryByAltText(/\.png$/)).not.toBeInTheDocument();
+  });
+
+  it("returns the message to the composer when the send fails", async () => {
+    installFetchMock({
+      "/api/chat": jsonResponse(502, { error: "no active LLM key for this org" }),
+    });
+    render(<Chat token="t" user={user} navigate={vi.fn()} />);
+    const box = screen.getByLabelText("Message");
+
+    await userEvent.type(box, "who is Li Wei's mother?{Enter}");
+
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+    // The optimistic turn is rolled back, so it cannot be re-sent as context,
+    // and the text is back where it was typed instead of being lost.
+    console.log("HTML>>>", document.body.innerHTML);
+    expect(box).toHaveValue("who is Li Wei's mother?");
+  });
+
+  it("drops a reply that belongs to a chat the user has left", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const answer = reply("That answer belonged to chat A.");
+    const answerText = answer.text;
+    const chat = (id: string) =>
+      jsonResponse(200, { chat: { id, title: id, updatedAt: "2026-10-31T00:00:00.000Z" }, messages: [] });
+
+    installFetchMock({
+      "/api/chat": { ...answer, text: async () => {
+        await gate;
+        return answerText();
+      } },
+      "/api/chats/a": chat("a"),
+      "/api/chats/b": chat("b"),
+    });
+
+    const { rerender } = render(<Chat token="t" user={user} chatId="a" navigate={vi.fn()} />);
+    await userEvent.type(screen.getByLabelText("Message"), "question for A{Enter}");
+    await waitFor(() => expect(screen.getByText("Thinking…")).toBeInTheDocument());
+
+    // The answer is still in flight when the user opens a different chat.
+    rerender(<Chat token="t" user={user} chatId="b" navigate={vi.fn()} />);
+    release();
+
+    await waitFor(() => expect(screen.queryByText(/belonged to chat A/)).not.toBeInTheDocument());
   });
 });

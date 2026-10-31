@@ -140,7 +140,13 @@ export async function updateDocumentStatus(
 ): Promise<void> {
   const values: Record<string, unknown> = { status };
   if (extra?.pageCount !== undefined) values.pageCount = extra.pageCount;
-  if (extra?.error !== undefined) values.error = extra.error;
+  if (extra?.error !== undefined) {
+    values.error = extra.error;
+  } else if (status === "extracting" || status === "indexed") {
+    // A successful reprocess used to keep the previous failure message and show
+    // it beside an indexed document forever.
+    values.error = null;
+  }
   if (status === "indexed" || status === "failed") {
     values.extractedAt = new Date();
   }
@@ -230,14 +236,22 @@ export async function insertEmbeddings(
   }>,
 ): Promise<void> {
   if (rows.length === 0) return;
-  // Use raw SQL for pgvector insertion (drizzle doesn't natively support vector literals)
-  for (const row of rows) {
-    await db.execute(sql`
-      INSERT INTO embeddings (entity_type, entity_id, model, dim, vec)
-      VALUES (${row.entityType}, ${row.entityId}::uuid, ${row.model}, ${row.dim}, ${row.vec}::vector)
-      ON CONFLICT (entity_type, entity_id, model) DO UPDATE SET vec = ${row.vec}::vector, dim = ${row.dim}
-    `);
-  }
+  // One statement for the whole document, not one per chunk: a few hundred round
+  // trips per document was slow, and a partial run left committed vectors behind
+  // a transaction rollback. pgvector needs raw SQL (drizzle has no vector type).
+  const values = sql.join(
+    rows.map(
+      (row) =>
+        sql`(${row.entityType}, ${row.entityId}::uuid, ${row.model}, ${row.dim}, ${row.vec}::vector)`,
+    ),
+    sql`, `,
+  );
+  await db.execute(sql`
+    INSERT INTO embeddings (entity_type, entity_id, model, dim, vec)
+    VALUES ${values}
+    ON CONFLICT (entity_type, entity_id, model)
+    DO UPDATE SET vec = excluded.vec, dim = excluded.dim
+  `);
 }
 
 /** Get chunks for a document (ordered by seq). */

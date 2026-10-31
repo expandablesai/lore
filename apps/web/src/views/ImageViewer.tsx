@@ -74,6 +74,7 @@ export function ImageThumb({
   onOpen: () => void;
 }) {
   const { url, error } = useImageUrl(token, image.documentId);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   if (error) {
     return (
@@ -98,13 +99,27 @@ export function ImageThumb({
       )}
       <button
         type="button"
-        onClick={() => void saveImages(token, [image])}
+        onClick={() => {
+          setSaveError(null);
+          // saveImages reports failure by *returning* the message, so the result
+          // has to be kept — a thumbnail download that silently does nothing
+          // looks like a broken button.
+          void saveImages(token, [image]).then(setSaveError);
+        }}
         aria-label={`Download ${image.filename}`}
         title={`Download ${image.filename}`}
         className="absolute right-2 top-2 rounded-full bg-black/55 p-2 text-white opacity-0 backdrop-blur transition group-hover:opacity-100 focus-visible:opacity-100"
       >
         <DownloadIcon />
       </button>
+      {saveError && (
+        <span
+          role="alert"
+          className="absolute left-2 top-2 max-w-[70%] rounded-lg bg-rose-500/85 px-2 py-1 text-[11px] text-white"
+        >
+          {saveError}
+        </span>
+      )}
       <span className="pointer-events-none absolute bottom-0 left-0 right-0 truncate bg-gradient-to-t from-black/60 to-transparent px-2 py-1 text-[11px] text-white/90">
         {image.filename}
       </span>

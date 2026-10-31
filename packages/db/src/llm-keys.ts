@@ -105,8 +105,13 @@ export function setLlmKeyEnabled(db: Db, orgId: string, id: string, enabled: boo
     .returning({ id: orgLlmKeys.id, enabled: orgLlmKeys.enabled });
 }
 
-/** Decrypt a stored key for the live request path. Never expose to a client. */
-export async function revealLlmKey(db: Db, id: string): Promise<RevealedKey | null> {
+/**
+ * Decrypt a stored key for the live request path. Never expose to a client.
+ *
+ * Scoped by org as well as id: resolving a key by id alone let one org's admin
+ * spend another org's credentials through `/orgs/<own>/llm-keys/<foreign>/test`.
+ */
+export async function revealLlmKey(db: Db, orgId: string, id: string): Promise<RevealedKey | null> {
   const rows = await db
     .select({
       cipher: orgLlmKeys.cipher,
@@ -118,7 +123,7 @@ export async function revealLlmKey(db: Db, id: string): Promise<RevealedKey | nu
       visionModel: orgLlmKeys.visionModel,
     })
     .from(orgLlmKeys)
-    .where(and(eq(orgLlmKeys.id, id), isNull(orgLlmKeys.revokedAt)))
+    .where(and(eq(orgLlmKeys.id, id), eq(orgLlmKeys.orgId, orgId), isNull(orgLlmKeys.revokedAt)))
     .limit(1);
   const row = rows[0];
   if (!row) return null;

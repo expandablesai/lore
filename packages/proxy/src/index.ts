@@ -249,11 +249,17 @@ export function createOpenAIVisioner(opts: AdapterOptions): Visioner {
 }
 
 /** The models a key's provider advertises, for picking a vision model by name. */
-export async function listModels(opts: AdapterOptions): Promise<string[]> {
+export async function listModels(
+  opts: AdapterOptions & { apiType?: "openai" | "anthropic" },
+): Promise<string[]> {
   const baseUrl = opts.baseUrl ?? OPENAI_BASE;
-  const res = await fetch(`${baseUrl}/models`, {
-    headers: { authorization: `Bearer ${opts.apiKey}` },
-  });
+  // Anthropic authenticates with x-api-key and a version header; a Bearer token
+  // is answered with 401, which made "list models" fail for every Claude key.
+  const headers =
+    opts.apiType === "anthropic"
+      ? { "x-api-key": opts.apiKey, "anthropic-version": "2023-06-01" }
+      : { authorization: `Bearer ${opts.apiKey}` };
+  const res = await fetch(`${baseUrl}/models`, { headers });
   const text = await res.text();
   if (!res.ok) throw new Error(`upstream ${res.status}: ${text.slice(0, 300)}`);
   const data = JSON.parse(text) as { data?: readonly { id?: string }[]; models?: readonly { name?: string }[] };

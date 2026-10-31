@@ -1,8 +1,12 @@
 // Chat: talk to the configured LLM with memory retrieval. The conversation is
 // held in local state; each send posts the whole message list and appends the
 // assistant reply. The newest user turn is the last item sent.
+// Enter sends and Shift+Enter starts a new line, the convention for every chat
+// box — but a bare Enter also commits an in-progress IME candidate, so the
+// composition state is checked first or Chinese/Japanese input would send
+// mid-sentence.
 import { useCallback, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, KeyboardEvent } from "react";
 import { api } from "../lib/api";
 import type { ChatMessage } from "../lib/types";
 import { Button, ErrorNote, Panel, StatusLine, errMessage, type ViewProps } from "./common";
@@ -13,8 +17,7 @@ export function Chat({ token }: ViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
-  const onSend = useCallback(async (event: FormEvent) => {
-    event.preventDefault();
+  const send = useCallback(async () => {
     const text = draft.trim();
     if (!text || sending) return;
     const next: ChatMessage[] = [...messages, { role: "user", content: text }];
@@ -31,6 +34,24 @@ export function Chat({ token }: ViewProps) {
       setSending(false);
     }
   }, [draft, messages, sending, token]);
+
+  const onSend = useCallback(
+    (event: FormEvent) => {
+      event.preventDefault();
+      void send();
+    },
+    [send],
+  );
+
+  const onKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.key !== "Enter" || event.shiftKey) return;
+      if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+      event.preventDefault();
+      void send();
+    },
+    [send],
+  );
 
   return (
     <div className="space-y-6">
@@ -59,8 +80,10 @@ export function Chat({ token }: ViewProps) {
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={onKeyDown}
               rows={2}
-              placeholder="Message…"
+              aria-label="Message"
+              placeholder="Message… (Enter sends, Shift+Enter for a new line)"
               className="w-full resize-none rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
             />
             <Button type="submit" variant="primary" disabled={sending || draft.trim() === ""}>

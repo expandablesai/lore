@@ -21,7 +21,8 @@
     "exceljs": "4.4.0",
     "tesseract.js": "7.0.0",
     "pino": "10.4.0",
-    "pg-boss": "12.38.0"
+    "pg-boss": "12.38.0",
+    "postgres": "3.4.9"
   },
   "devDependencies": {
     "typescript": "5.x",

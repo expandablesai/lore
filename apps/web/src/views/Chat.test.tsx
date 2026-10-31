@@ -148,6 +148,35 @@ describe("Chat images", () => {
     expect(screen.queryByText(/!\[/)).not.toBeInTheDocument();
   });
 
+  it("opens the picture full screen, with a download, when clicked", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/api/chat")) {
+        return {
+          ok: true, status: 200, statusText: "OK",
+          text: async () =>
+            JSON.stringify({
+              message: { role: "assistant", content: "Here it is." },
+              images: [{ documentId: "d1", filename: "portfolio.png", mime: "image/png" }],
+            }),
+        } as Response;
+      }
+      return {
+        ok: true, status: 200, statusText: "OK",
+        blob: async () => new Blob(["png"], { type: "image/png" }),
+      } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<Chat token="t" user={user} navigate={vi.fn()} />);
+    await userEvent.type(screen.getByLabelText("Message"), "show me the portfolio{Enter}");
+    const thumb = await screen.findByAltText("portfolio.png");
+
+    await userEvent.click(thumb);
+    const dialog = await screen.findByRole("dialog", { name: "portfolio.png" });
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download" })).toBeInTheDocument();
+  });
   it("shows no image strip when the reply has none", async () => {
     const fetchMock = installFetchMock({ "/api/chat": reply("Nothing visual here.") });
     render(<Chat token="t" user={user} navigate={vi.fn()} />);

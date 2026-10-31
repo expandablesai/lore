@@ -89,8 +89,30 @@ export const users = pgTable("users", {
   totpEnabled: boolean("totp_enabled").notNull().default(false),
   role: userRole("role").notNull().default("member"),
   status: userStatus("status").notNull().default("active"),
+  theme: text("theme").notNull().default("system"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [check("theme_enum", sql`${t.theme} IN ('light','dark','system')`)]);
+
+// ─── Chat history ────────────────────────────────────────────────────────────
+
+export const chats = pgTable("chats", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").notNull(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull().default("New chat"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const chatMessages = pgTable("chat_messages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  chatId: uuid("chat_id").notNull().references(() => chats.id, { onDelete: "cascade" }),
+  orgId: uuid("org_id").notNull(),
+  role: text("role").notNull(),
+  content: text("content").notNull(),
+  images: jsonb("images").notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [check("chat_role_enum", sql`${t.role} IN ('user','assistant','system')`)]);
 
 export const sessions = pgTable("sessions", {
   id: uuid("id").primaryKey().defaultRandom(),

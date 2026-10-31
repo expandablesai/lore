@@ -7,8 +7,10 @@
 import type {
   Assertion,
   AuthUser,
+  ChatImage,
   ChatInput,
   ChatReply,
+  ChatSummary,
   Chunk,
   DocumentDetail,
   DocumentSummary,
@@ -21,6 +23,7 @@ import type {
   RememberResult,
   Role,
   Scope,
+  StoredChatMessage,
   TokenResponse,
   UploadResult,
 } from "./types";
@@ -273,8 +276,25 @@ export const api = {
   llmKeyModels: (token: string, orgId: string, keyId: string) =>
     request<{ ok: boolean; models: string[] }>(`/orgs/${orgId}/llm-keys/${keyId}/models`, { method: "POST", token }),
 
-  chat: (token: string, input: ChatInput) =>
-    request<ChatReply>("/chat", { method: "POST", token, body: input }),
+  chat: (token: string, input: ChatInput & { chatId?: string }) =>
+    request<ChatReply & { chatId: string }>("/chat", { method: "POST", token, body: input }),
+
+  chats: (token: string) => request<ChatSummary[]>("/chats", { token }),
+
+  chatHistory: (token: string, id: string) =>
+    request<{ chat: { id: string; title: string; updatedAt: string }; messages: StoredChatMessage[] }>(
+      `/chats/${id}`,
+      { token },
+    ),
+
+  renameChat: (token: string, id: string, title: string) =>
+    request<{ ok: boolean }>(`/chats/${id}`, { method: "PATCH", token, body: { title } }),
+
+  deleteChat: (token: string, id: string) =>
+    request<{ ok: boolean }>(`/chats/${id}`, { method: "DELETE", token }),
+
+  setTheme: (token: string, theme: "light" | "dark" | "system") =>
+    request<MeUser>("/me", { method: "PATCH", token, body: { theme } }),
 
   /**
    * The stored bytes of a document.

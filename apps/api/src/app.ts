@@ -17,6 +17,7 @@ import { createMemoryRoutes } from "./routes/memory.ts";
 import { createDocumentRoutes } from "./routes/documents.ts";
 import { createLlmKeyRoutes } from "./routes/llm-keys.ts";
 import { createChatRoutes } from "./routes/chat.ts";
+import { createChatHistoryRoutes } from "./routes/chats.ts";
 import { requireAuth } from "./plugins/auth-guard.ts";
 import healthRoutes from "./routes/health.ts";
 
@@ -52,6 +53,7 @@ export function createApp(db: Db = createDb()): FastifyInstance {
     protectedScope.register(createDocumentRoutes(db), { prefix: "/documents" });
     protectedScope.register(createLlmKeyRoutes(db));
     protectedScope.register(createChatRoutes(db));
+    protectedScope.register(createChatHistoryRoutes(db));
   });
 
   app.get("/metrics", async (_request, reply) => {

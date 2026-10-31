@@ -1,14 +1,18 @@
 import { z } from "zod";
 import { and, eq, inArray, like, sql } from "drizzle-orm";
 import {
+  appendMessage,
   canEmbedKey,
   chunks,
+  createChat,
   documents,
   dominantEmbeddingModel,
   embeddings,
+  getChat,
   pickChatKey,
   pickEmbedKey,
   revealActiveLlmKeys,
+  titleFrom,
   type Db,
   type RevealedKey,
   withRls,
@@ -33,6 +37,8 @@ import { deterministicEmbed, EMBEDDING_DIM, HASH_DIM, HASH_MODEL, vectorToPgText
  * returned beside it, so the console can put them on screen.
  */
 const chatBody = z.object({
+  /** Continue this conversation; omit to start one (it is created and named). */
+  chatId: z.string().uuid().optional(),
   messages: z
     .array(
       z.object({
@@ -92,6 +98,21 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
         const user = request.user;
         const { messages } = request.body;
         const question = messages[messages.length - 1]?.content ?? "";
+
+        // The conversation this turn belongs to: an existing chat, or a new one
+        // named after the opening question so history stays recognisable.
+        let chatId = request.body.chatId;
+        if (chatId) {
+          const existing = await getChat(db, user.orgId, user.id, chatId);
+          if (!existing) return reply.code(404).send({ error: "chat not found" });
+        } else {
+          const created = await createChat(db, {
+            orgId: user.orgId,
+            userId: user.id,
+            title: titleFrom(question),
+          });
+          chatId = created.id;
+        }
 
         const keys = await revealActiveLlmKeys(db, user.orgId);
         const chatKey = pickChatKey(keys);
@@ -228,7 +249,19 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
           role: "assistant",
           content: "",
         };
-        return { message, images };
+
+        // Record the turn only once it is complete: a question whose answer
+        // never arrived is not history worth reloading.
+        await appendMessage(db, { chatId, orgId: user.orgId, role: "user", content: question });
+        await appendMessage(db, {
+          chatId,
+          orgId: user.orgId,
+          role: "assistant",
+          content: message.content,
+          images,
+        });
+
+        return { chatId, message, images };
       },
     );
   };

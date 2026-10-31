@@ -1,7 +1,74 @@
 @import "tailwindcss";
 
-:root {
+/*
+ * Liquid-glass surface system.
+ *
+ * Two palettes drive everything: the `slate` scale is remapped per theme so the
+ * views keep their structure while day mode inverts to paper, and a small set
+ * of surface tokens describe the glass panes, the page wash and the accent.
+ * Tailwind v4 emits `var(--color-slate-900)` for `bg-slate-900`, so overriding
+ * the scale here restyles every view at once instead of one class at a time.
+ */
+
+:root,
+[data-theme="dark"] {
   color-scheme: dark;
+
+  --color-slate-950: #070a11;
+  --color-slate-900: #0d1220;
+  --color-slate-800: #1b2334;
+  --color-slate-700: #2b3548;
+  --color-slate-600: #3b4760;
+  --color-slate-500: #7c89a3;
+  --color-slate-400: #9aa7bf;
+  --color-slate-300: #c3ccdd;
+  --color-slate-200: #dde3ee;
+  --color-slate-100: #f2f5fa;
+
+  --glass: 255 255 255 / 0.055;
+  --glass-strong: 255 255 255 / 0.1;
+  --glass-border: 255 255 255 / 0.12;
+  --glass-highlight: 255 255 255 / 0.22;
+  --page-wash:
+    radial-gradient(1100px 720px at 12% -8%, rgba(96, 165, 250, 0.24), transparent 60%),
+    radial-gradient(900px 620px at 88% 4%, rgba(168, 85, 247, 0.2), transparent 62%),
+    radial-gradient(1000px 800px at 50% 110%, rgba(45, 212, 191, 0.16), transparent 60%),
+    linear-gradient(180deg, #070a11 0%, #080c15 55%, #05070d 100%);
+  --shadow-pane: 0 24px 70px -32px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --accent: #58a6ff;
+  --accent-contrast: #04121f;
+  --bubble-user: linear-gradient(135deg, #3d8bfd, #6ea8ff);
+  --bubble-assistant: rgba(255, 255, 255, 0.055);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --color-slate-950: #eef1f7;
+  --color-slate-900: #ffffff;
+  --color-slate-800: #e4e8f0;
+  --color-slate-700: #cfd5e1;
+  --color-slate-600: #b6bece;
+  --color-slate-500: #6f7b90;
+  --color-slate-400: #5b6577;
+  --color-slate-300: #46506180;
+  --color-slate-200: #2c3342;
+  --color-slate-100: #131722;
+
+  --glass: 255 255 255 / 0.66;
+  --glass-strong: 255 255 255 / 0.82;
+  --glass-border: 16 22 38 / 0.1;
+  --glass-highlight: 255 255 255 / 0.9;
+  --page-wash:
+    radial-gradient(1100px 720px at 8% -10%, rgba(96, 165, 250, 0.3), transparent 60%),
+    radial-gradient(900px 640px at 92% 0%, rgba(217, 154, 255, 0.28), transparent 62%),
+    radial-gradient(1000px 760px at 50% 108%, rgba(125, 232, 214, 0.26), transparent 58%),
+    linear-gradient(180deg, #f7f9fd 0%, #eef2f9 60%, #e9eef7 100%);
+  --shadow-pane: 0 20px 50px -28px rgba(23, 34, 62, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --accent: #2f7cf6;
+  --accent-contrast: #ffffff;
+  --bubble-user: linear-gradient(135deg, #4c8dff, #6ea8ff);
+  --bubble-assistant: rgba(255, 255, 255, 0.72);
 }
 
 html,
@@ -12,7 +79,94 @@ body,
 
 body {
   margin: 0;
-  background-color: #0b0f17;
-  color: #e5e9f0;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  background-color: var(--color-slate-950);
+  background-image: var(--page-wash);
+  background-attachment: fixed;
+  color: var(--color-slate-100);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Segoe UI", Inter, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.01em;
+  transition: background-color 260ms ease, color 260ms ease;
+}
+
+/* The glass pane: translucent, blurred, with a 1px light edge on top. */
+.glass {
+  background: rgb(var(--glass));
+  border: 1px solid rgb(var(--glass-border));
+  backdrop-filter: blur(26px) saturate(165%);
+  -webkit-backdrop-filter: blur(26px) saturate(165%);
+  box-shadow: var(--shadow-pane);
+}
+
+.glass-strong {
+  background: rgb(var(--glass-strong));
+  border: 1px solid rgb(var(--glass-border));
+  backdrop-filter: blur(34px) saturate(180%);
+  -webkit-backdrop-filter: blur(34px) saturate(180%);
+  box-shadow:
+    var(--shadow-pane),
+    inset 0 1px 0 rgb(var(--glass-highlight));
+}
+
+/* Hairline sheen along the top edge, the way glass catches light. */
+.glass-sheen {
+  position: relative;
+}
+.glass-sheen::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(var(--glass-highlight)), transparent);
+  pointer-events: none;
+}
+
+.liquid-lift {
+  transition:
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 260ms ease,
+    border-color 260ms ease;
+}
+.liquid-lift:hover {
+  transform: translateY(-1px);
+}
+
+/* Scrollbars follow the theme instead of the OS default. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--glass-border)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--glass-border));
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body,
+  .liquid-lift {
+    transition: none;
+  }
+}
+
+@keyframes lore-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rise {
+  animation: lore-rise 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }

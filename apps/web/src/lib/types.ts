@@ -28,6 +28,24 @@ export interface MeUser {
   role: Role;
   orgId: string;
   status: UserStatus;
+  theme?: "light" | "dark" | "system";
+}
+
+/** A saved conversation in the sidebar. */
+export interface ChatSummary {
+  id: string;
+  title: string;
+  updatedAt: string;
+  messageCount: number;
+}
+
+/** One stored message, as the API returns it. */
+export interface StoredChatMessage {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  images: ChatImage[];
+  createdAt: string;
 }
 
 export interface TokenResponse {

@@ -2,6 +2,7 @@
 // or the authenticated shell. No router dependency — navigation is internal.
 import { AuthProvider, useAuth } from "./lib/auth";
 import { NavProvider } from "./lib/nav";
+import { ThemeProvider } from "./lib/theme";
 import { Shell } from "./Shell";
 import { Login } from "./views/Login";
 
@@ -14,13 +15,16 @@ function Splash() {
 }
 
 function Gate() {
-  const { user, loading } = useAuth();
-  if (loading) return <Splash />;
-  if (!user) return <Login />;
+  const { user, token, loading } = useAuth();
+  // The theme provider sits above the gate so the sign-in screen follows it too.
   return (
-    <NavProvider>
-      <Shell />
-    </NavProvider>
+    <ThemeProvider token={token}>
+      {loading ? <Splash /> : !user ? <Login /> : (
+        <NavProvider>
+          <Shell />
+        </NavProvider>
+      )}
+    </ThemeProvider>
   );
 }
 

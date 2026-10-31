@@ -50,6 +50,13 @@
       "when": 1793454882612,
       "tag": "0006_numerous_runaways",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793456987163,
+      "tag": "0007_open_menace",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,11 @@
+lore: memory that survives a new chat
+
+- first-person facts the reader states (my name is DK, remember that ...) are
+  captured as confirmed personal assertions with the chat turn as their source,
+  and every later turn loads them into the prompt
+- related turns from the reader's other conversations are folded in, so a
+  discussion can be picked up in a fresh thread
+- document retrieval now takes at most two passages per document, so a long
+  screenplay or a pile of image descriptions cannot crowd out a one-line note
+  that answers the question
+- the empty-answer retry keeps the profile block instead of dropping it

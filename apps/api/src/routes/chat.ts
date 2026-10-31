@@ -1,8 +1,11 @@
 import { z } from "zod";
-import { and, eq, inArray, like, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, like, ne, sql } from "drizzle-orm";
 import {
   appendMessage,
+  assertions,
   canEmbedKey,
+  chatMessages,
+  chats,
   chunks,
   createChat,
   documents,
@@ -81,6 +84,143 @@ export interface ChatImage {
 const WANTS_IMAGE =
   /\b(image|images|picture|pictures|photo|photos|screenshot|screenshots|scan|scans|visual|portfolio|design|drawing|diagram|look like|show)\b/i;
 
+/**
+ * Durable memory.
+ *
+ * A conversation is not where memory lives: what the reader tells LORE in one
+ * chat has to be available in the next one, or the product is just a chat log.
+ * Two mechanisms make that true:
+ *
+ * 1. Facts stated in the first person ("my name is DK") are captured as
+ *    assertions on the reader's personal scope, and every turn loads them.
+ * 2. Turns from the reader's *other* conversations are searched for the current
+ *    question, so a discussion can be picked up again in a new thread.
+ *
+ * Both are deterministic — they do not depend on a document chunk winning a
+ * cosine ranking against a screenplay or a pile of image descriptions.
+ */
+
+/** Subject under which self-stated facts are filed. */
+const USER_SUBJECT = "the user";
+
+/**
+ * Patterns worth capturing, and the predicate each becomes.
+ *
+ * Deliberately conservative: a bad extraction becomes a durable false belief,
+ * so only explicit first-person statements are recorded. "I am tired" is not a
+ * fact about the reader; "my name is DK" is.
+ */
+const FACT_PATTERNS: ReadonlyArray<{ pattern: RegExp; predicate: string }> = [
+  { pattern: /\bmy name is ([^.,;!?\n]{1,60})/i, predicate: "name" },
+  { pattern: /\bcall me ([^.,;!?\n]{1,60})/i, predicate: "name" },
+  { pattern: /\bmy email is ([^.,;!?\n]{1,80})/i, predicate: "email" },
+  { pattern: /\bi live in ([^.,;!?\n]{1,60})/i, predicate: "lives in" },
+  { pattern: /\bi work (?:at|for) ([^.,;!?\n]{1,60})/i, predicate: "works at" },
+  { pattern: /\bi speak ([^.,;!?\n]{1,40})/i, predicate: "speaks" },
+  { pattern: /\bi prefer ([^.,;!?\n]{1,80})/i, predicate: "prefers" },
+  { pattern: /\bremember (?:that )?(.{3,200})/i, predicate: "note" },
+];
+
+/** Facts stated about the reader in this message. Exported for its test. */
+export function extractSelfFacts(text: string): Array<{ predicate: string; object: string }> {
+  const found: Array<{ predicate: string; object: string }> = [];
+  for (const { pattern, predicate } of FACT_PATTERNS) {
+    const raw = pattern.exec(text)?.[1]?.trim();
+    if (!raw) continue;
+    const object = raw.replace(/[.;,:!?]+$/, "").trim();
+    if (object.length < 2 || object.length > 160) continue;
+    if (found.some((fact) => fact.predicate === predicate && fact.object === object)) continue;
+    found.push({ predicate, object });
+  }
+  return found;
+}
+
+/** Keep a pasted turn from filling the next prompt. */
+function shorten(text: string, max = 300): string {
+  const clean = text.replace(/\s+/g, " ").trim();
+  return clean.length <= max ? clean : `${clean.slice(0, max - 1)}…`;
+}
+
+/** Store the self-facts in this message, skipping ones already known. */
+async function rememberSelfFacts(
+  db: Db,
+  input: { orgId: string; userId: string; chatId: string; text: string },
+): Promise<void> {
+  for (const fact of extractSelfFacts(input.text)) {
+    const known = await db
+      .select({ id: assertions.id })
+      .from(assertions)
+      .where(
+        and(
+          eq(assertions.orgId, input.orgId),
+          eq(assertions.ownerUserId, input.userId),
+          eq(assertions.subject, USER_SUBJECT),
+          eq(assertions.predicate, fact.predicate),
+          eq(assertions.object, fact.object),
+          ne(assertions.status, "deleted"),
+        ),
+      )
+      .limit(1);
+    if (known[0]) continue;
+    await db.insert(assertions).values({
+      orgId: input.orgId,
+      scope: "personal",
+      subject: USER_SUBJECT,
+      predicate: fact.predicate,
+      object: fact.object,
+      ownerUserId: input.userId,
+      // Provenance: the conversation turn this was told in.
+      sources: [{ type: "chat", id: input.chatId }],
+      trust: 2,
+      status: "confirmed",
+      confidence: 1,
+    });
+  }
+}
+
+/** Every durable fact this reader has stated, newest first. */
+async function loadSelfFacts(
+  db: Db,
+  orgId: string,
+  userId: string,
+): Promise<Array<{ predicate: string; object: string }>> {
+  return db
+    .select({ predicate: assertions.predicate, object: assertions.object })
+    .from(assertions)
+    .where(
+      and(
+        eq(assertions.orgId, orgId),
+        eq(assertions.ownerUserId, userId),
+        eq(assertions.subject, USER_SUBJECT),
+        inArray(assertions.status, ["proposed", "confirmed"]),
+      ),
+    )
+    .orderBy(desc(assertions.createdAt))
+    .limit(24);
+}
+
+/** Turns from this reader's other conversations that look related. */
+async function loadEarlierTurns(
+  db: Db,
+  input: { orgId: string; userId: string; chatId: string; question: string },
+): Promise<Array<{ title: string; content: string }>> {
+  return db
+    .select({ title: chats.title, content: chatMessages.content })
+    .from(chatMessages)
+    .innerJoin(chats, eq(chats.id, chatMessages.chatId))
+    .where(
+      and(
+        eq(chatMessages.orgId, input.orgId),
+        eq(chats.userId, input.userId),
+        eq(chatMessages.role, "user"),
+        ne(chatMessages.chatId, input.chatId),
+        sql`similarity(${chatMessages.content}, ${input.question}) > 0.1`,
+      ),
+    )
+    .orderBy(sql`similarity(${chatMessages.content}, ${input.question}) DESC`)
+    .limit(4);
+}
+
 /** Embed the question in the stored chunks' vector space. */
 async function queryVectorFor(
   key: RevealedKey | null,
@@ -147,6 +287,18 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
             .send({ error: "no active LLM key for this org" });
         }
 
+        // Memory is not a property of one thread: capture what this message
+        // states about the reader, then load every fact they have ever stated
+        // plus the earlier turns that look related to this question.
+        await rememberSelfFacts(db, { orgId: user.orgId, userId: user.id, chatId, text: question });
+        const facts = await loadSelfFacts(db, user.orgId, user.id);
+        const earlier = await loadEarlierTurns(db, {
+          orgId: user.orgId,
+          userId: user.id,
+          chatId,
+          question,
+        });
+
         const storedModel = await dominantEmbeddingModel(db, user.orgId);
         const { vec: queryVector, model } = await queryVectorFor(
           pickEmbedKey(keys, storedModel),
@@ -154,7 +306,7 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
         );
         const queryText = vectorToPgText(zeroPad(queryVector, EMBEDDING_DIM));
 
-        const rows = await withRls(db, user.orgId, user.id, async (tx) =>
+        const candidates = await withRls(db, user.orgId, user.id, async (tx) =>
           tx
             .select({ text: chunks.text, documentId: chunks.documentId })
             .from(embeddings)
@@ -167,8 +319,26 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
               ),
             )
             .orderBy(sql`${embeddings.vec} <=> ${queryText}::vector`)
-            .limit(6),
+            .limit(24),
         );
+
+        /*
+         * At most two passages per document.
+         *
+         * A single verbose document — a 32-chunk screenplay, or a pile of image
+         * descriptions — otherwise fills every slot, so a one-line note that
+         * says who the reader is never reaches the model even when it is the
+         * best match in the database.
+         */
+        const perDocument = new Map<string, number>();
+        const rows: typeof candidates = [];
+        for (const row of candidates) {
+          const taken = perDocument.get(row.documentId) ?? 0;
+          if (taken >= 2) continue;
+          perDocument.set(row.documentId, taken + 1);
+          rows.push(row);
+          if (rows.length >= 6) break;
+        }
 
         // Images the retrieved passages came from: the answer is standing on
         // those descriptions, so the pictures belong with it.
@@ -249,6 +419,28 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
               );
 
         const memory = [...rows.map((r) => r.text), ...imageDescriptions.map((d) => d.text)].join("\n\n");
+
+        // The blocks that make memory survive a new chat.
+        const profileBlock =
+          facts.length === 0
+            ? ""
+            : [
+                "What you already know about this reader, from earlier conversations:",
+                ...facts.map((fact) => `- ${fact.predicate}: ${fact.object}`),
+                "Use these without being asked when they are relevant, and never contradict them.",
+              ].join("\n");
+        const earlierBlock =
+          earlier.length === 0
+            ? ""
+            : [
+                "Related turns from the reader's other conversations:",
+                ...earlier.map((turn) => `- (${shorten(turn.title, 40)}) ${shorten(turn.content)}`),
+              ].join("\n");
+        const documentsBlock =
+          memory === ""
+            ? "No documents were retrieved for this question."
+            : `Passages retrieved from the workspace's documents:\n${memory}`;
+
         const shown =
           images.length > 0
             ? `\n\nThe user is being shown these images with your reply: ${images
@@ -278,9 +470,14 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
                 CAPABILITIES,
                 "",
                 `Answer in ${answerLanguage}. Keep names, code, quotations and filenames as they are.`,
-                "Ground your answer in the retrieved memories when they are relevant; say when they are not.",
-                memory === "" ? "No memories were retrieved for this question." : "",
+                profileBlock,
+                earlierBlock,
+                documentsBlock,
                 shown,
+                // A retry drops this whole prompt, so the same answer has to be
+                // reachable from the question alone when the reader asks about
+                // themselves.
+                "If the answer is in the material above, answer from it directly — do not ask the reader for information they have already given you.",
               ]
                 .filter((line) => line !== "")
                 .join("\n"),
@@ -303,15 +500,25 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
             },
             "chat provider returned an empty answer",
           );
-          // One retry without the retrieved context: this model returns empty
-          // text on some long, multi-part prompts, and the question alone is
-          // usually answerable. A short answer beats a blank bubble.
+          // One retry with a much shorter prompt: this model returns empty text
+          // on some long, multi-part prompts, and the question alone is usually
+          // answerable. The durable profile stays in — dropping it would make a
+          // question about the reader unanswerable on the retry alone.
           try {
             const retry = await adapter.chatCompletions({
               model: chatKey.chatModel,
               max_tokens: 512,
               messages: [
-                { role: "system", content: "Answer the user's question directly, in a few sentences." },
+                {
+                  role: "system",
+                  content: [
+                    `Answer in ${answerLanguage}.`,
+                    profileBlock,
+                    "Answer the user's question directly, in a few sentences.",
+                  ]
+                    .filter((line) => line !== "")
+                    .join("\n"),
+                },
                 ...messages,
               ],
             });

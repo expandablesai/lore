@@ -1,9 +1,12 @@
-// Memory: recall assertions by query, write a new remember triple, and forget
-// an assertion. Recall/remember/forget all ride the bearer session.
+// Memory: the one place where things go in. Pasted text and images are written
+// into the workspace at the top of the page; below that you can recall
+// assertions by query, write a remember triple, and forget one. Recall/remember
+// /forget all ride the bearer session.
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../lib/api";
 import type { Assertion, AssertionStatus, Scope } from "../lib/types";
+import { Capture } from "./Capture";
 import { Badge, Button, ErrorNote, Field, Panel, StatusLine, errMessage, type ViewProps } from "./common";
 
 const SCOPES: Scope[] = ["personal", "project", "org"];
@@ -15,7 +18,7 @@ function statusTone(status: AssertionStatus): "emerald" | "amber" | "rose" | "sl
   return "slate";
 }
 
-export function Memory({ token }: ViewProps) {
+export function Memory({ token, user, navigate }: ViewProps) {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<Scope>("org");
   const [assertions, setAssertions] = useState<Assertion[] | null>(null);
@@ -82,7 +85,14 @@ export function Memory({ token }: ViewProps) {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-slate-100">Memory</h1>
+      <header>
+        <h1 className="text-xl font-semibold text-slate-100">Memory</h1>
+        <p className="mt-1 text-xs text-slate-400">
+          Paste something to keep it, or write a fact, then recall it later.
+        </p>
+      </header>
+
+      <Capture token={token} user={user} navigate={navigate} />
 
       <Panel>
         <h2 className="mb-3 text-sm font-medium text-slate-200">Remember a fact</h2>

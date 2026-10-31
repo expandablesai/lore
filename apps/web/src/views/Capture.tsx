@@ -1,11 +1,12 @@
-// Capture: a paste-first intake. Drop text or images in, press Enter (or Send),
-// and the console writes them into the workspace and reports exactly what was
-// stored and indexed — with the timestamps and the person who saved it.
+// Capture: a paste-first intake block, rendered at the top of Memory. Drop text
+// or images in, press Enter (or Save), and the console writes them into the
+// workspace and reports exactly what was stored and indexed — with the
+// timestamps and the person who saved it.
 import { useCallback, useRef, useState } from "react";
 import type { ClipboardEvent, FormEvent, KeyboardEvent } from "react";
 import { api } from "../lib/api";
 import type { DocumentDetail, DocumentSummary } from "../lib/types";
-import { Button, ErrorNote, Panel, StatusLine, errMessage, type ViewProps } from "./common";
+import { Button, ErrorNote, Panel, errMessage, type ViewProps } from "./common";
 
 /** A file waiting to be written into the workspace. */
 interface Pending {
@@ -177,16 +178,16 @@ export function Capture({ token, navigate }: ViewProps) {
   const failed = receipts.filter((r) => r.status === "failed").length;
 
   return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="text-lg font-semibold tracking-tight text-slate-100">Paste</h1>
-        <p className="text-xs text-slate-400">
-          Paste text or images, press Enter, and LORE writes them into the workspace.
-        </p>
-      </header>
-
+    <section aria-label="Paste" className="space-y-4">
       <div onPaste={onPaste}>
         <Panel>
+          <div className="mb-3">
+            <h2 className="text-sm font-medium text-slate-200">Paste</h2>
+            <p className="mt-1 text-xs text-slate-400">
+              Paste text or an image, press Enter, and LORE writes it into the workspace — with the
+              date, the metadata and the person who saved it.
+            </p>
+          </div>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -240,6 +241,10 @@ export function Capture({ token, navigate }: ViewProps) {
             </span>
           </div>
           {error && <div className="mt-3"><ErrorNote message={error} /></div>}
+          <p className="mt-3 text-xs text-slate-500">
+            Saved items appear in Documents with their metadata; indexing usually finishes within a
+            few seconds.
+          </p>
         </Panel>
       </div>
 
@@ -307,16 +312,7 @@ export function Capture({ token, navigate }: ViewProps) {
           </ul>
         </Panel>
       )}
-
-      {receipts.length === 0 && (
-        <Panel>
-          <StatusLine>
-            Saved items appear in Documents with their metadata. Indexing usually finishes within a
-            few seconds.
-          </StatusLine>
-        </Panel>
-      )}
-    </div>
+    </section>
   );
 }
 

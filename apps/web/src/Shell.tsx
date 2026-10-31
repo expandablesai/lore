@@ -10,7 +10,6 @@ import { useNav } from "./lib/nav";
 import { useTheme, type Theme } from "./lib/theme";
 import type { ChatSummary } from "./lib/types";
 import { Chat } from "./views/Chat";
-import { Capture } from "./views/Capture";
 import { Profile } from "./views/Profile";
 import { Avatar, BrainMark } from "./components/Brand";
 import { Dashboard } from "./views/Dashboard";
@@ -21,10 +20,10 @@ import { Members } from "./views/Members";
 import { Memory } from "./views/Memory";
 import { Button, type ViewProps } from "./views/common";
 
-const NAV: { label: string; path: string; adminOnly?: boolean }[] = [
+/** Sidebar destinations. Paste is not one: it is the top of Memory. */
+export const NAV: { label: string; path: string; adminOnly?: boolean }[] = [
   { label: "Dashboard", path: "/" },
   { label: "Chat", path: "/chat" },
-  { label: "Paste", path: "/capture" },
   { label: "Documents", path: "/documents" },
   { label: "Memory", path: "/memory" },
   { label: "Members", path: "/members" },
@@ -41,6 +40,11 @@ const THEMES: { value: Theme; label: string }[] = [
 function isActive(path: string, target: string): boolean {
   if (target === "/") return path === "/";
   return path === target || path.startsWith(`${target}/`);
+}
+
+/** Paste lives at the top of Memory now, so an old #/capture link lands there. */
+export function routeFor(path: string): string {
+  return path === "/capture" ? "/memory" : path;
 }
 
 /** A saved conversation: click to open, × to delete. */
@@ -114,20 +118,20 @@ export function Shell() {
   if (!user || !token) return null;
 
   const viewProps: ViewProps = { token, user, navigate };
+  const route = routeFor(path);
 
   let view: ReactNode;
-  if (path === "/") view = <Dashboard {...viewProps} />;
-  else if (path === "/chat") view = <Chat {...viewProps} />;
-  else if (path.startsWith("/chat/"))
-    view = <Chat {...viewProps} chatId={decodeURIComponent(path.slice("/chat/".length))} />;
-  else if (path === "/documents") view = <Documents {...viewProps} />;
-  else if (path.startsWith("/documents/"))
-    view = <DocumentDetail {...viewProps} id={decodeURIComponent(path.slice("/documents/".length))} />;
-  else if (path === "/capture") view = <Capture {...viewProps} />;
-  else if (path === "/profile") view = <Profile {...viewProps} />;
-  else if (path === "/memory") view = <Memory {...viewProps} />;
-  else if (path === "/members") view = <Members {...viewProps} />;
-  else if (path === "/llm-keys") view = <LlmKeys {...viewProps} />;
+  if (route === "/") view = <Dashboard {...viewProps} />;
+  else if (route === "/chat") view = <Chat {...viewProps} />;
+  else if (route.startsWith("/chat/"))
+    view = <Chat {...viewProps} chatId={decodeURIComponent(route.slice("/chat/".length))} />;
+  else if (route === "/documents") view = <Documents {...viewProps} />;
+  else if (route.startsWith("/documents/"))
+    view = <DocumentDetail {...viewProps} id={decodeURIComponent(route.slice("/documents/".length))} />;
+  else if (route === "/profile") view = <Profile {...viewProps} />;
+  else if (route === "/memory") view = <Memory {...viewProps} />;
+  else if (route === "/members") view = <Members {...viewProps} />;
+  else if (route === "/llm-keys") view = <LlmKeys {...viewProps} />;
   else
     view = (
       <div className="space-y-4">
@@ -138,7 +142,7 @@ export function Shell() {
       </div>
     );
 
-  const activeChatId = path.startsWith("/chat/") ? path.slice("/chat/".length) : undefined;
+  const activeChatId = route.startsWith("/chat/") ? route.slice("/chat/".length) : undefined;
 
   const sidebar = (
     <aside className="glass neon-frame flex w-72 shrink-0 flex-col gap-5 rounded-3xl p-4">
@@ -172,7 +176,7 @@ export function Shell() {
               onClick={() => navigate(item.path)}
               className={cn(
                 "rounded-xl px-3 py-2 text-left text-sm transition",
-                isActive(path, item.path)
+                isActive(route, item.path)
                   ? "bg-slate-800/70 text-slate-100"
                   : "text-slate-400 hover:bg-slate-800/40 hover:text-slate-200",
               )}

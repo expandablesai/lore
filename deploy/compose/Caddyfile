@@ -10,14 +10,22 @@
 #   auth.dushyant.com  - the Authelia portal (must stay reachable without auth)
 
 (lore_app) {
+	# API calls are made by the console with fetch(). Telling the browser to
+	# follow a redirect to the portal host turns a lapsed session into an opaque
+	# "NetworkError" (the redirect is cross-origin and carries no CORS headers),
+	# so the gate answers a plain 401 here and the console decides to re-enter
+	# the portal. `route` keeps the order literal: the session check must see
+	# the original /api path, before the prefix is stripped for the app.
 	handle /api/* {
-		forward_auth authelia:9091 {
-			uri /api/verify?rd=https://auth.dushyant.com
-			header_up X-Forwarded-Proto https
-			copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
+		route {
+			forward_auth authelia:9091 {
+				uri /api/verify
+				header_up X-Forwarded-Proto https
+				copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
+			}
+			uri strip_prefix /api
+			reverse_proxy app:3001
 		}
-		uri strip_prefix /api
-		reverse_proxy app:3001
 	}
 
 	handle {

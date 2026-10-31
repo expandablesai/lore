@@ -37,8 +37,11 @@ access_control:
 session:
   name: authelia_session
   secret: ${LORE_AUTH_SESSION_SECRET}
-  expiration: 1h
-  inactivity: 5m
+  # Long enough to work in the console without being logged out mid-task; the
+  # 5m default inactivity dropped the session between reading a page and
+  # uploading a file, which the console saw as a network error.
+  expiration: 12h
+  inactivity: 1h
   cookies:
     - domain: "dushyant.com"
       authelia_url: "https://auth.dushyant.com"

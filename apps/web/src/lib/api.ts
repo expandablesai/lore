@@ -52,6 +52,43 @@ function messageFrom(status: number, data: unknown, fallback: string): string {
   return fallback || `HTTP ${status}`;
 }
 
+/** Shown when the edge gate, rather than the API, rejected the call. */
+export const GATE_EXPIRED_MESSAGE =
+  "Your sign-in session expired — reloading to sign in again.";
+
+/**
+ * The edge fronting `/api` is Authelia, not the app. When the portal session
+ * lapses every call is rejected by the gate — as a plain-text 401, or as a
+ * redirect to the portal host which the browser blocks as a cross-origin
+ * fetch and surfaces as a bare "NetworkError". Neither is something the console
+ * can act on, so send the browser back through the portal once; the page reload
+ * hits the gate, the portal signs in again and returns here.
+ */
+function bounceThroughGate(): void {
+  if (typeof window === "undefined") return;
+  const marker = "lore.gate.bounced";
+  try {
+    const last = Number(window.sessionStorage.getItem(marker) ?? "0");
+    // Already bounced recently: leave the message on screen rather than loop.
+    if (Date.now() - last < 15_000) return;
+    window.sessionStorage.setItem(marker, String(Date.now()));
+  } catch {
+    // Session storage can be blocked; one bounce is still better than none.
+  }
+  window.setTimeout(() => {
+    try {
+      window.location.reload();
+    } catch {
+      // Navigation is unavailable (embedded/test document) — the message stands.
+    }
+  }, 1200);
+}
+
+/** A 401 the app itself produced carries a JSON `error`; the gate's does not. */
+function isGateRejection(status: number, text: string): boolean {
+  return status === 401 && !text.trimStart().startsWith("{");
+}
+
 export async function request<T>(
   path: string,
   opts: RequestOptions = {},
@@ -67,13 +104,28 @@ export async function request<T>(
     body = JSON.stringify(opts.body);
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: opts.method ?? "GET",
-    headers,
-    body,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method: opts.method ?? "GET",
+      headers,
+      body,
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      // A blocked cross-origin redirect is indistinguishable from a real
+      // network failure here, and the gate is the only thing that redirects.
+      bounceThroughGate();
+      throw new ApiError(0, GATE_EXPIRED_MESSAGE);
+    }
+    throw error;
+  }
 
   const text = await res.text();
+  if (isGateRejection(res.status, text)) {
+    bounceThroughGate();
+    throw new ApiError(res.status, GATE_EXPIRED_MESSAGE);
+  }
   const data: unknown = text ? JSON.parse(text) : null;
 
   if (!res.ok) {

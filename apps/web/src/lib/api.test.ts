@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, api, request } from "./api";
+import { ApiError, GATE_EXPIRED_MESSAGE, api, request } from "./api";
 
 interface MockResponse {
   ok: boolean;
@@ -15,6 +15,10 @@ function jsonResponse(status: number, body: unknown, ok = status < 400): MockRes
     statusText: ok ? "OK" : "Error",
     text: async () => (body === null ? "" : JSON.stringify(body)),
   };
+}
+
+function textResponse(status: number, body: string): MockResponse {
+  return { ok: false, status, statusText: "Unauthorized", text: async () => body };
 }
 
 const fetchMock = vi.fn();
@@ -76,6 +80,26 @@ describe("request", () => {
     const err = await request("/orgs").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiError);
     expect((err as ApiError).status).toBe(500);
+  });
+
+  it("reports a lapsed edge session instead of a bare network error", async () => {
+    // Authelia rejects before the app sees the request; its body is plain text.
+    vi.useFakeTimers();
+    fetchMock.mockResolvedValue(textResponse(401, "Unauthorized"));
+    const err = await request("/documents", { token: "x" }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).status).toBe(401);
+    expect((err as ApiError).message).toBe(GATE_EXPIRED_MESSAGE);
+    vi.useRealTimers();
+  });
+
+  it("treats a blocked redirect to the portal as a lapsed edge session", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockRejectedValue(new TypeError("NetworkError when attempting to fetch resource."));
+    const err = await request("/documents", { token: "x" }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).message).toBe(GATE_EXPIRED_MESSAGE);
+    vi.useRealTimers();
   });
 });
 

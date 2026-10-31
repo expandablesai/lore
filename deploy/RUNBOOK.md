@@ -90,6 +90,24 @@ docker compose -f deploy/compose/docker-compose.yml run --rm app pnpm db:apply-r
   function, RLS policies, grants). Run it **once** against the freshly
   migrated database — it is not idempotent.
 
+### Applying a new migration to a running deployment
+
+`run --rm app` executes *inside the current image*, so it only knows the
+migrations that image was built with. Run `build` first, or the migrate step
+reports "applied successfully" while doing nothing:
+
+```bash
+git fetch && git reset --hard origin/master
+docker compose -f deploy/compose/docker-compose.yml build app worker   # image now carries the new SQL
+docker compose -f deploy/compose/docker-compose.yml run --rm app pnpm db:migrate
+# verify the column/table actually exists before starting the new code
+docker compose -f deploy/compose/docker-compose.yml exec -T db \
+  psql -U lore -d lore -c "\d org_llm_keys"
+docker compose -f deploy/compose/docker-compose.yml up -d --force-recreate app worker web
+```
+
+Do **not** re-run `db:apply-rls` for an incremental migration.
+
 ## 6. Start the app stack
 
 ```bash

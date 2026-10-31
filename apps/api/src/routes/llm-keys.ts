@@ -5,6 +5,7 @@ import {
   listLlmKeys,
   revealLlmKey,
   revokeLlmKey,
+  setLlmKeyEnabled,
   type Db,
 } from "@lore/db";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
@@ -22,6 +23,7 @@ function isOrgAdmin(user: AuthenticatedUser): boolean {
 
 const orgParams = z.object({ id: z.string() });
 const keyParams = z.object({ id: z.string(), keyId: z.string() });
+const toggleBody = z.object({ enabled: z.boolean() });
 const addBody = z.object({
   label: z.string().min(1).max(200),
   apiKey: z.string().min(8).max(200),
@@ -104,6 +106,40 @@ export const createLlmKeyRoutes: (db: Db) => FastifyPluginAsyncZod = (db) => asy
         ip: request.ip,
       });
       return { ok: true };
+    },
+  );
+
+  /**
+   * Switch a key on or off.
+   *
+   * This is the non-destructive choice: a disabled key keeps its configuration
+   * and stays testable, but the chat, embedding and vision paths skip it, so
+   * "use that provider right now" does not require deleting anything.
+   */
+  app.patch(
+    "/orgs/:id/llm-keys/:keyId",
+    { schema: { params: keyParams, body: toggleBody } },
+    async (request, reply) => {
+      if (request.params.id !== request.user.orgId || !isOrgAdmin(request.user)) {
+        return reply.code(403).send({ error: "forbidden" });
+      }
+      const rows = await setLlmKeyEnabled(
+        db,
+        request.params.id,
+        request.params.keyId,
+        request.body.enabled,
+      );
+      const row = rows[0];
+      if (!row) return reply.code(404).send({ error: "not found" });
+      await db.insert(audit).values({
+        orgId: request.user.orgId,
+        actorId: request.user.id,
+        action: request.body.enabled ? "llmkey.enable" : "llmkey.disable",
+        targetType: "org_llm_key",
+        targetIds: [request.params.keyId],
+        ip: request.ip,
+      });
+      return { id: row.id, enabled: row.enabled };
     },
   );
 

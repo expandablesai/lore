@@ -29,6 +29,7 @@ export interface MeUser {
   orgId: string;
   status: UserStatus;
   theme?: "light" | "dark" | "system";
+  neon?: boolean;
 }
 
 /** A saved conversation in the sidebar. */
@@ -157,6 +158,7 @@ export interface OrgLlmKey {
   embedModel: string;
   embedDim: number;
   visionModel: string | null;
+  enabled: boolean;
   createdAt: string;
 }
 

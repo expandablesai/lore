@@ -103,6 +103,25 @@ export function LlmKeys({ token, user }: ViewProps) {
     }
   }
 
+  /**
+   * Switch a key on or off.
+   *
+   * A disabled key stops answering chat and stops embedding, without losing its
+   * configuration — that is how the provider in use is chosen on the spot.
+   */
+  async function onToggle(key: OrgLlmKey) {
+    setError(null);
+    setKeys((prev) =>
+      prev ? prev.map((k) => (k.id === key.id ? { ...k, enabled: !key.enabled } : k)) : prev,
+    );
+    try {
+      await api.setLlmKeyEnabled(token, orgId, key.id, !key.enabled);
+    } catch (e) {
+      setError(errMessage(e));
+      load();
+    }
+  }
+
   async function onTest(keyId: string) {
     setTesting(keyId);
     setTestResult(null);
@@ -179,9 +198,17 @@ export function LlmKeys({ token, user }: ViewProps) {
         {keys !== null && keys.length > 0 && (
           <ul className="divide-y divide-slate-800">
             {keys.map((k) => (
-              <li key={k.id} className="flex items-center justify-between gap-3 py-3">
+              <li
+                key={k.id}
+                className={
+                  "flex items-center justify-between gap-3 py-3 " + (k.enabled ? "" : "opacity-60")
+                }
+              >
                 <div className="min-w-0">
-                  <p className="truncate text-sm text-slate-100">{k.label}</p>
+                  <p className="truncate text-sm text-slate-100">
+                    {k.label}
+                    {!k.enabled && <span className="ml-2 text-xs text-amber-300">disabled</span>}
+                  </p>
                   <p className="text-xs text-slate-500">{k.provider} · {k.chatModel}</p>
                   <p className="text-xs text-slate-500">
                     {k.visionModel ? `vision: ${k.visionModel}` : "no vision model"} · {k.createdAt}
@@ -198,9 +225,32 @@ export function LlmKeys({ token, user }: ViewProps) {
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <Badge tone="sky">{k.provider}</Badge>
+                  <Badge tone={k.enabled ? "sky" : "amber"}>{k.provider}</Badge>
                   {canManage(user.role) && (
                     <>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={k.enabled}
+                        aria-label={`${k.enabled ? "Disable" : "Enable"} ${k.label}`}
+                        onClick={() => void onToggle(k)}
+                        className="flex items-center gap-2 rounded-full px-2 py-1 text-xs text-slate-400 transition hover:text-slate-200"
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={
+                            "relative h-4 w-8 rounded-full transition " +
+                            (k.enabled ? "bg-emerald-500/80" : "bg-slate-700")
+                          }
+                        >
+                          <span
+                            className={
+                              "absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all " +
+                              (k.enabled ? "left-4" : "left-0.5")
+                            }
+                          />
+                        </span>
+                      </button>
                       <Button variant="ghost" onClick={() => onTest(k.id)} disabled={testing !== null}>
                         {testing === k.id ? "Testing…" : "Test"}
                       </Button>

@@ -11,6 +11,12 @@ async function themeOf(db: Db, userId: string): Promise<string> {
   return rows[0]?.theme ?? "system";
 }
 
+/** Whether the neon lighting layer is on for this reader. */
+async function neonOf(db: Db, userId: string): Promise<boolean> {
+  const rows = await db.select({ neon: users.neon }).from(users).where(eq(users.id, userId)).limit(1);
+  return rows[0]?.neon ?? false;
+}
+
 export const createUserRoutes: (db: Db) => FastifyPluginAsync = (db) => async (app) => {
   app.get("/me", async (request) => {
     const user = request.user;
@@ -22,24 +28,37 @@ export const createUserRoutes: (db: Db) => FastifyPluginAsync = (db) => async (a
       orgId: user.orgId,
       status: user.status,
       theme: await themeOf(db, user.id),
+      neon: await neonOf(db, user.id),
     };
   });
 
-  app.patch<{ Body: { displayName?: string; theme?: string } }>("/me", async (request, reply) => {
-    const { displayName, theme } = request.body;
+  app.patch<{ Body: { displayName?: string; theme?: string; neon?: boolean } }>("/me", async (request, reply) => {
+    const { displayName, theme, neon } = request.body;
     if (theme !== undefined && !["light", "dark", "system"].includes(theme)) {
       return reply.code(400).send({ error: "theme must be light, dark or system" });
     }
-    if (displayName || theme) {
+    if (neon !== undefined && typeof neon !== "boolean") {
+      return reply.code(400).send({ error: "neon must be a boolean" });
+    }
+    if (displayName || theme || neon !== undefined) {
       const set: Record<string, unknown> = {};
       if (displayName) set.displayName = displayName;
       if (theme) set.theme = theme;
+      if (neon !== undefined) set.neon = neon;
       await db.update(users).set(set).where(eq(users.id, request.user.id));
       await db.insert(audit).values({ orgId: request.user.orgId, actorId: request.user.id, action: "user.update", targetType: "user", targetIds: [request.user.id], ip: request.ip });
     }
     const rows = await db.select().from(users).where(eq(users.id, request.user.id)).limit(1);
     const updated = rows[0]!;
-    return { id: updated.id, email: updated.email, displayName: updated.displayName, role: updated.role, orgId: updated.orgId, theme: updated.theme };
+    return {
+      id: updated.id,
+      email: updated.email,
+      displayName: updated.displayName,
+      role: updated.role,
+      orgId: updated.orgId,
+      theme: updated.theme,
+      neon: updated.neon,
+    };
   });
 
   app.patch<{ Params: { orgId: string; userId: string }; Body: { role?: string; status?: string } }>(

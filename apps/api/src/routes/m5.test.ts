@@ -166,6 +166,68 @@ describe("M5 chat history", () => {
     expect(bad.statusCode).toBe(400);
   });
 
+  test("a disabled key stops answering chat, and enabling brings it back", async () => {
+    const keys = await app.inject({ method: "GET", url: `/orgs/${orgId}/llm-keys`, headers: { authorization: `Bearer ${token}` } });
+    const keyId = (keys.json() as Array<{ id: string }>)[0]!.id;
+
+    const off = await app.inject({
+      method: "PATCH", url: `/orgs/${orgId}/llm-keys/${keyId}`,
+      headers: { authorization: `Bearer ${token}` }, payload: { enabled: false },
+    });
+    expect(off.statusCode).toBe(200);
+    expect((off.json() as { enabled: boolean }).enabled).toBe(false);
+
+    // With the only key switched off there is nothing to answer with.
+    const blocked = await app.inject({
+      method: "POST", url: "/chat",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { messages: [{ role: "user", content: "are you there" }] },
+    });
+    expect(blocked.statusCode).toBe(502);
+    expect((blocked.json() as { error: string }).error).toMatch(/no active LLM key/i);
+
+    const on = await app.inject({
+      method: "PATCH", url: `/orgs/${orgId}/llm-keys/${keyId}`,
+      headers: { authorization: `Bearer ${token}` }, payload: { enabled: true },
+    });
+    expect(on.statusCode).toBe(200);
+    expect((on.json() as { enabled: boolean }).enabled).toBe(true);
+  });
+
+  test("the enable switch is admin-only and validates its body", async () => {
+    const suffix = crypto.randomUUID().slice(0, 8);
+    const other = await app.inject({
+      method: "POST", url: "/auth/signup",
+      payload: { email: `m5-mem-${suffix}@example.test`, password: "m5-password-3", displayName: "Mem", orgName: `M5 Mem ${suffix}` },
+    });
+    const otherToken = (other.json() as { token: string }).token;
+
+    const keys = await app.inject({ method: "GET", url: `/orgs/${orgId}/llm-keys`, headers: { authorization: `Bearer ${token}` } });
+    const keyId = (keys.json() as Array<{ id: string }>)[0]!.id;
+
+    const foreign = await app.inject({
+      method: "PATCH", url: `/orgs/${orgId}/llm-keys/${keyId}`,
+      headers: { authorization: `Bearer ${otherToken}` }, payload: { enabled: false },
+    });
+    expect(foreign.statusCode).toBe(403);
+
+    const bad = await app.inject({
+      method: "PATCH", url: `/orgs/${orgId}/llm-keys/${keyId}`,
+      headers: { authorization: `Bearer ${token}` }, payload: { enabled: "nope" },
+    });
+    expect(bad.statusCode).toBe(400);
+  });
+
+  test("the neon preference persists alongside the theme", async () => {
+    const patched = await app.inject({
+      method: "PATCH", url: "/me", headers: { authorization: `Bearer ${token}` }, payload: { neon: true },
+    });
+    expect(patched.statusCode).toBe(200);
+    expect((patched.json() as { neon: boolean }).neon).toBe(true);
+
+    const me = await app.inject({ method: "GET", url: "/me", headers: { authorization: `Bearer ${token}` } });
+    expect((me.json() as { neon: boolean; theme: string }).neon).toBe(true);
+  });
   test("chat history requires a session", async () => {
     const r = await app.inject({ method: "GET", url: "/chats" });
     expect(r.statusCode).toBe(401);

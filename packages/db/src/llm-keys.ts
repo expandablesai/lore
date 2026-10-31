@@ -74,6 +74,7 @@ export function listLlmKeys(db: Db, orgId: string) {
       embedModel: orgLlmKeys.embedModel,
       embedDim: orgLlmKeys.embedDim,
       visionModel: orgLlmKeys.visionModel,
+      enabled: orgLlmKeys.enabled,
       createdAt: orgLlmKeys.createdAt,
     })
     .from(orgLlmKeys)
@@ -87,6 +88,21 @@ export function revokeLlmKey(db: Db, orgId: string, id: string) {
     .set({ revokedAt: new Date() })
     .where(and(eq(orgLlmKeys.id, id), eq(orgLlmKeys.orgId, orgId)))
     .returning({ id: orgLlmKeys.id });
+}
+
+/**
+ * Switch a key on or off.
+ *
+ * Disabling is the reversible cousin of revoking: the key keeps its configuration
+ * and can still be tested, but every selection path skips it — that is how an
+ * admin picks which provider answers right now without destroying the key.
+ */
+export function setLlmKeyEnabled(db: Db, orgId: string, id: string, enabled: boolean) {
+  return db
+    .update(orgLlmKeys)
+    .set({ enabled })
+    .where(and(eq(orgLlmKeys.id, id), eq(orgLlmKeys.orgId, orgId)))
+    .returning({ id: orgLlmKeys.id, enabled: orgLlmKeys.enabled });
 }
 
 /** Decrypt a stored key for the live request path. Never expose to a client. */
@@ -137,7 +153,9 @@ export async function revealActiveLlmKeys(db: Db, orgId: string): Promise<Reveal
       visionModel: orgLlmKeys.visionModel,
     })
     .from(orgLlmKeys)
-    .where(and(eq(orgLlmKeys.orgId, orgId), isNull(orgLlmKeys.revokedAt)))
+    .where(
+      and(eq(orgLlmKeys.orgId, orgId), isNull(orgLlmKeys.revokedAt), eq(orgLlmKeys.enabled, true)),
+    )
     .orderBy(desc(orgLlmKeys.createdAt), desc(orgLlmKeys.id));
   return rows.map((row) => ({
     apiKey: decryptSecret(row.cipher),

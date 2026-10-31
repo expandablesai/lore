@@ -296,6 +296,16 @@ export const api = {
   setTheme: (token: string, theme: "light" | "dark" | "system") =>
     request<MeUser>("/me", { method: "PATCH", token, body: { theme } }),
 
+  updateMe: (token: string, input: { theme?: "light" | "dark" | "system"; neon?: boolean }) =>
+    request<MeUser>("/me", { method: "PATCH", token, body: input }),
+
+  setLlmKeyEnabled: (token: string, orgId: string, keyId: string, enabled: boolean) =>
+    request<{ id: string; enabled: boolean }>(`/orgs/${orgId}/llm-keys/${keyId}`, {
+      method: "PATCH",
+      token,
+      body: { enabled },
+    }),
+
   /**
    * The stored bytes of a document.
    *

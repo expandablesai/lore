@@ -57,6 +57,13 @@
       "when": 1793456987163,
       "tag": "0007_open_menace",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793457686465,
+      "tag": "0008_magical_sage",
+      "breakpoints": true
     }
   ]
 }

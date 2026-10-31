@@ -173,3 +173,8 @@ export async function setUserTheme(
 ): Promise<void> {
   await db.update(users).set({ theme }).where(eq(users.id, userId));
 }
+
+/** Persist whether the neon lighting layer is on. Independent of the theme. */
+export async function setUserNeon(db: Db, userId: string, neon: boolean): Promise<void> {
+  await db.update(users).set({ neon }).where(eq(users.id, userId));
+}

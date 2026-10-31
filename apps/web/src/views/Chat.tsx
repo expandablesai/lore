@@ -149,7 +149,7 @@ export function Chat({ token, chatId, navigate }: ViewProps & { chatId?: string 
           {turns.map((turn, index) =>
             turn.role === "user" ? (
               <div key={index} className="rise flex justify-end">
-                <div className="max-w-[85%] rounded-3xl rounded-br-lg px-4 py-2.5 text-sm text-white shadow-lg shadow-sky-500/20 [background:var(--bubble-user)]">
+                <div className="bubble-user max-w-[85%] rounded-3xl rounded-br-lg px-4 py-2.5 text-sm text-white shadow-lg shadow-sky-500/20 [background:var(--bubble-user)]">
                   {turn.content}
                 </div>
               </div>
@@ -202,7 +202,7 @@ export function Chat({ token, chatId, navigate }: ViewProps & { chatId?: string 
             <ErrorNote message={error} />
           </div>
         )}
-        <form onSubmit={onSend} className="glass-strong glass-sheen flex items-end gap-2 rounded-[26px] p-2">
+        <form onSubmit={onSend} className="glass-strong glass-sheen neon-frame flex items-end gap-2 rounded-[26px] p-2">
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}

@@ -90,6 +90,7 @@ export const users = pgTable("users", {
   role: userRole("role").notNull().default("member"),
   status: userStatus("status").notNull().default("active"),
   theme: text("theme").notNull().default("system"),
+  neon: boolean("neon").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [check("theme_enum", sql`${t.theme} IN ('light','dark','system')`)]);
 
@@ -323,6 +324,9 @@ export const orgLlmKeys = pgTable("org_llm_keys", {
   // Model used to read images when this key's gateway serves one; falls back to
   // chat_model when empty (some providers make their chat model multimodal).
   visionModel: text("vision_model"),
+  // A key that is present but switched off: it stays configured (and testable)
+  // while the chat, embedding and vision paths skip it.
+  enabled: boolean("enabled").notNull().default(true),
   cipher: text("cipher").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),

@@ -83,7 +83,7 @@ function ChatRow({
 export function Shell() {
   const { user, token, logout } = useAuth();
   const { path, navigate } = useNav();
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, neon, setNeon } = useTheme();
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -134,7 +134,7 @@ export function Shell() {
   const activeChatId = path.startsWith("/chat/") ? path.slice("/chat/".length) : undefined;
 
   const sidebar = (
-    <aside className="glass flex w-72 shrink-0 flex-col gap-5 rounded-3xl p-4">
+    <aside className="glass neon-frame flex w-72 shrink-0 flex-col gap-5 rounded-3xl p-4">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-semibold tracking-tight text-slate-100">EXPANDABLES LORE</p>
@@ -215,6 +215,34 @@ export function Shell() {
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={neon}
+          onClick={() => setNeon(!neon)}
+          className={cn(
+            "flex w-full items-center justify-between rounded-2xl px-3 py-2 text-xs transition",
+            neon
+              ? "bg-slate-800/70 text-slate-100"
+              : "text-slate-400 hover:bg-slate-800/40 hover:text-slate-200",
+          )}
+        >
+          <span className="font-medium">Neon lights</span>
+          <span
+            aria-hidden="true"
+            className={cn(
+              "relative h-4 w-8 rounded-full transition",
+              neon ? "bg-[linear-gradient(90deg,#ff2d55,#32d74b,#64d2ff,#bf5af2)] neon-glow" : "bg-slate-700",
+            )}
+          >
+            <span
+              className={cn(
+                "absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all",
+                neon ? "left-4" : "left-0.5",
+              )}
+            />
+          </span>
+        </button>
         <div>
           <p className="truncate text-sm text-slate-300">{user.displayName}</p>
           <p className="mb-2 truncate text-xs text-slate-500">{user.email}</p>

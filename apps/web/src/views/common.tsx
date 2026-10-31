@@ -20,7 +20,7 @@ export function errMessage(e: unknown): string {
 
 export function Panel({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div className={cn("glass glass-sheen rounded-3xl p-5", className)}>{children}</div>
+    <div className={cn("glass glass-sheen neon-frame rounded-3xl p-5", className)}>{children}</div>
   );
 }
 

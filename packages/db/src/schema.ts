@@ -298,6 +298,9 @@ export const orgLlmKeys = pgTable("org_llm_keys", {
   chatModel: text("chat_model").notNull().default("gpt-4o"),
   embedModel: text("embed_model").notNull().default("text-embedding-3-large"),
   embedDim: integer("embed_dim").notNull().default(3072),
+  // Model used to read images when this key's gateway serves one; falls back to
+  // chat_model when empty (some providers make their chat model multimodal).
+  visionModel: text("vision_model"),
   cipher: text("cipher").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),

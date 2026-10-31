@@ -1,7 +1,7 @@
 // Key selection: chat and embeddings may come from different providers, and
 // the embedding key must match the vector space the stored chunks live in.
 import { describe, expect, test } from "vitest";
-import { orderEmbedKeys, pickChatKey, pickEmbedKey, type RevealedKey } from "./llm-keys.js";
+import { orderEmbedKeys, pickChatKey, pickEmbedKey, pickVisionKey, type RevealedKey } from "./llm-keys.js";
 
 function key(overrides: Partial<RevealedKey> & { label: string }): RevealedKey & { label: string } {
   return {
@@ -11,6 +11,7 @@ function key(overrides: Partial<RevealedKey> & { label: string }): RevealedKey &
     chatModel: "chat-model",
     embedModel: "embed-model",
     embedDim: 768,
+    visionModel: null,
     ...overrides,
   };
 }
@@ -83,5 +84,29 @@ describe("orderEmbedKeys", () => {
     const ordered = orderEmbedKeys([hosted, claude], "nomic-embed-text");
     expect(ordered.matched).toBeNull();
     expect(ordered.candidates).toEqual([hosted]);
+  });
+});
+
+describe("pickVisionKey", () => {
+  test("prefers the key that names a vision model over the chat key", () => {
+    const gateway = key({ label: "strata", chatModel: "strata-iq3-256", visionModel: "qwen2.5-vl-7b" });
+    const picked = pickVisionKey([hosted, gateway, local]);
+    expect(picked?.key).toBe(gateway);
+    expect(picked?.model).toBe("qwen2.5-vl-7b");
+  });
+
+  test("falls back to the newest key's chat model when none names one", () => {
+    const picked = pickVisionKey([hosted, local]);
+    expect(picked?.key).toBe(hosted);
+    expect(picked?.model).toBe("deepseek-chat");
+  });
+
+  test("treats a blank vision model as absent", () => {
+    const blank = key({ label: "blank", chatModel: "gpt-4o", visionModel: "   " });
+    expect(pickVisionKey([blank])?.model).toBe("gpt-4o");
+  });
+
+  test("returns null when the org has no active key", () => {
+    expect(pickVisionKey([])).toBeNull();
   });
 });

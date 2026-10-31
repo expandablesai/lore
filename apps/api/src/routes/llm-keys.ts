@@ -8,7 +8,7 @@ import {
   type Db,
 } from "@lore/db";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
-import { createAnthropicAdapter, createOpenAIAdapter } from "@lore/proxy";
+import { createAnthropicAdapter, createOpenAIAdapter, listModels } from "@lore/proxy";
 import type { AuthenticatedUser } from "../plugins/auth-guard.ts";
 
 /**
@@ -30,6 +30,7 @@ const addBody = z.object({
   chatModel: z.string().min(1).max(200).optional(),
   embedModel: z.string().max(200).optional(),
   embedDim: z.number().int().min(1).max(3072).optional(),
+  visionModel: z.string().max(200).optional(),
   apiType: z.enum(["openai", "anthropic"]).optional(),
 });
 
@@ -58,7 +59,7 @@ export const createLlmKeyRoutes: (db: Db) => FastifyPluginAsyncZod = (db) => asy
       if (request.params.id !== request.user.orgId || !isOrgAdmin(request.user)) {
         return reply.code(403).send({ error: "forbidden" });
       }
-      const { label, apiKey, provider, baseUrl, chatModel, embedModel, embedDim, apiType } = request.body;
+      const { label, apiKey, provider, baseUrl, chatModel, embedModel, embedDim, visionModel, apiType } = request.body;
       const rows = await insertLlmKey(db, {
         orgId: request.params.id,
         label,
@@ -68,6 +69,7 @@ export const createLlmKeyRoutes: (db: Db) => FastifyPluginAsyncZod = (db) => asy
         chatModel,
         embedModel,
         embedDim,
+        visionModel,
         apiType,
       });
       const row = rows[0];
@@ -124,6 +126,33 @@ export const createLlmKeyRoutes: (db: Db) => FastifyPluginAsyncZod = (db) => asy
           messages: [{ role: "user", content: "ping" }],
         });
         return { ok: true, model: res.model, reply: res.choices[0]?.message.content ?? "" };
+      } catch (e) {
+        return reply
+          .code(502)
+          .send({ ok: false, error: e instanceof Error ? e.message : "upstream failed" });
+      }
+    },
+  );
+
+  /**
+   * The model ids the key's provider advertises.
+   *
+   * A gateway in front of several backends does not document its own catalogue
+   * anywhere the console can read, and picking a vision model by guessing its
+   * name is how an org ends up with an image path that never works.
+   */
+  app.post(
+    "/orgs/:id/llm-keys/:keyId/models",
+    { schema: { params: keyParams } },
+    async (request, reply) => {
+      if (request.params.id !== request.user.orgId || !isOrgAdmin(request.user)) {
+        return reply.code(403).send({ error: "forbidden" });
+      }
+      const key = await revealLlmKey(db, request.params.keyId);
+      if (!key) return reply.code(404).send({ error: "not found" });
+      try {
+        const models = await listModels({ apiKey: key.apiKey, baseUrl: key.baseUrl });
+        return { ok: true, models };
       } catch (e) {
         return reply
           .code(502)

@@ -193,6 +193,76 @@ export interface Embedder {
   embed(input: string | readonly string[], model: string): Promise<Float32Array[]>;
 }
 
+/** A vision model that turns one image into indexable text. */
+export interface Visioner {
+  readonly name: string;
+  readonly baseUrl: string;
+  describe(request: { model: string; imageDataUrl: string; prompt?: string }): Promise<string>;
+}
+
+/** What to ask a vision model for: an index entry, not a chat reply. */
+export const DEFAULT_VISION_PROMPT = [
+  "Describe this image so it can be found again later by someone searching for it.",
+  "Cover, in plain prose: what it shows, any readable text or labels (transcribe them",
+  "verbatim), colours, people and objects, and any numbers or names. Do not speculate",
+  "about things that are not visible.",
+].join(" ");
+
+/**
+ * OpenAI-compatible vision call — one image plus a prompt, text back.
+ *
+ * This is the same /chat/completions endpoint with multimodal content parts,
+ * which is what LiteLLM-style gateways forward to their vision backends.
+ */
+export function createOpenAIVisioner(opts: AdapterOptions): Visioner {
+  const baseUrl = opts.baseUrl ?? OPENAI_BASE;
+  return {
+    name: "openai",
+    baseUrl,
+    async describe(request: { model: string; imageDataUrl: string; prompt?: string }): Promise<string> {
+      const json = await postJson(`${baseUrl}/chat/completions`, opts.apiKey, {
+        model: request.model,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: request.prompt ?? DEFAULT_VISION_PROMPT },
+              { type: "image_url", image_url: { url: request.imageDataUrl } },
+            ],
+          },
+        ],
+      });
+      const data = json as {
+        choices?: readonly { message?: { content?: string | readonly { text?: string }[] } }[];
+      };
+      const content = data.choices?.[0]?.message?.content;
+      if (typeof content === "string") return content.trim();
+      if (Array.isArray(content)) {
+        return content
+          .map((part) => ("text" in part ? (part.text ?? "") : ""))
+          .join(" ")
+          .trim();
+      }
+      return "";
+    },
+  };
+}
+
+/** The models a key's provider advertises, for picking a vision model by name. */
+export async function listModels(opts: AdapterOptions): Promise<string[]> {
+  const baseUrl = opts.baseUrl ?? OPENAI_BASE;
+  const res = await fetch(`${baseUrl}/models`, {
+    headers: { authorization: `Bearer ${opts.apiKey}` },
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`upstream ${res.status}: ${text.slice(0, 300)}`);
+  const data = JSON.parse(text) as { data?: readonly { id?: string }[]; models?: readonly { name?: string }[] };
+  const ids = (data.data ?? []).map((m) => m.id ?? "").filter(Boolean);
+  if (ids.length > 0) return ids;
+  // Ollama's native /api/tags shape, in case the base URL points at it.
+  return (data.models ?? []).map((m) => m.name ?? "").filter(Boolean);
+}
+
 /** OpenAI embedder — real /v1/embeddings over fetch. */
 export function createOpenAIEmbedder(opts: AdapterOptions): Embedder {
   const baseUrl = opts.baseUrl ?? OPENAI_BASE;

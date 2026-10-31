@@ -11,6 +11,7 @@ function key(over: Partial<RevealedKey>): RevealedKey {
     chatModel: "gpt-4o",
     embedModel: "text-embedding-3-large",
     embedDim: 3072,
+    visionModel: null,
     ...over,
   };
 }

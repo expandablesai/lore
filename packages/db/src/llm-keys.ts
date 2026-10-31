@@ -17,6 +17,7 @@ export interface NewLlmKey {
   chatModel?: string;
   embedModel?: string;
   embedDim?: number;
+  visionModel?: string;
   apiKey: string;
 }
 
@@ -28,6 +29,7 @@ export interface RevealedKey {
   chatModel: string;
   embedModel: string;
   embedDim: number;
+  visionModel: string | null;
 }
 
 export function insertLlmKey(db: Db, input: NewLlmKey) {
@@ -42,6 +44,7 @@ export function insertLlmKey(db: Db, input: NewLlmKey) {
       chatModel: input.chatModel ?? "gpt-4o",
       embedModel: input.embedModel ?? "text-embedding-3-large",
       embedDim: input.embedDim ?? 3072,
+      visionModel: input.visionModel?.trim() || null,
       cipher: encryptSecret(input.apiKey),
     })
     .returning({
@@ -54,6 +57,7 @@ export function insertLlmKey(db: Db, input: NewLlmKey) {
       chatModel: orgLlmKeys.chatModel,
       embedModel: orgLlmKeys.embedModel,
       embedDim: orgLlmKeys.embedDim,
+      visionModel: orgLlmKeys.visionModel,
       createdAt: orgLlmKeys.createdAt,
     });
 }
@@ -69,6 +73,7 @@ export function listLlmKeys(db: Db, orgId: string) {
       chatModel: orgLlmKeys.chatModel,
       embedModel: orgLlmKeys.embedModel,
       embedDim: orgLlmKeys.embedDim,
+      visionModel: orgLlmKeys.visionModel,
       createdAt: orgLlmKeys.createdAt,
     })
     .from(orgLlmKeys)
@@ -94,6 +99,7 @@ export async function revealLlmKey(db: Db, id: string): Promise<RevealedKey | nu
       chatModel: orgLlmKeys.chatModel,
       embedModel: orgLlmKeys.embedModel,
       embedDim: orgLlmKeys.embedDim,
+      visionModel: orgLlmKeys.visionModel,
     })
     .from(orgLlmKeys)
     .where(and(eq(orgLlmKeys.id, id), isNull(orgLlmKeys.revokedAt)))
@@ -107,6 +113,7 @@ export async function revealLlmKey(db: Db, id: string): Promise<RevealedKey | nu
     chatModel: row.chatModel,
     embedModel: row.embedModel,
     embedDim: row.embedDim,
+    visionModel: row.visionModel,
   };
 }
 
@@ -127,6 +134,7 @@ export async function revealActiveLlmKeys(db: Db, orgId: string): Promise<Reveal
       chatModel: orgLlmKeys.chatModel,
       embedModel: orgLlmKeys.embedModel,
       embedDim: orgLlmKeys.embedDim,
+      visionModel: orgLlmKeys.visionModel,
     })
     .from(orgLlmKeys)
     .where(and(eq(orgLlmKeys.orgId, orgId), isNull(orgLlmKeys.revokedAt)))
@@ -138,6 +146,7 @@ export async function revealActiveLlmKeys(db: Db, orgId: string): Promise<Reveal
     chatModel: row.chatModel,
     embedModel: row.embedModel,
     embedDim: row.embedDim,
+    visionModel: row.visionModel,
   }));
 }
 
@@ -152,11 +161,35 @@ export function pickChatKey(keys: RevealedKey[]): RevealedKey | null {
   return keys[0] ?? null;
 }
 
+/** A key plus the model name to send an image to. */
+export interface VisionTarget {
+  key: RevealedKey;
+  model: string;
+}
+
+/**
+ * The key and model that can read an image.
+ *
+ * A gateway commonly serves chat with one model and vision with another (a
+ * LiteLLM proxy in front of several backends, for instance), so an explicit
+ * vision model wins over the chat model. Keys without one still qualify —
+ * many providers make their chat model multimodal — and the upstream call is
+ * what finally decides.
+ */
+export function pickVisionKey(keys: RevealedKey[]): VisionTarget | null {
+  const explicit = keys.find((key) => (key.visionModel ?? "").trim() !== "");
+  if (explicit) {
+    return { key: explicit, model: (explicit.visionModel ?? "").trim() };
+  }
+  const fallback = keys[0];
+  return fallback ? { key: fallback, model: fallback.chatModel } : null;
+}
+
 /**
  * The key that turns text into vectors.
  *
  * Vectors from different embedding models are not comparable, so when an org
- * already holds vectors produced by `storedModel`, that model wins: retrieval
+ * already holds vectors produced by storedModel, that model wins: retrieval
  * re-embeds the query in the same space instead of drifting into another one.
  * With no stored vectors yet, fall back to the newest key that can embed.
  */
@@ -169,15 +202,15 @@ export function pickEmbedKey(keys: RevealedKey[], storedModel: string | null): R
 }
 
 /**
- * The order in which to try keys when *writing* vectors.
+ * The order in which to try keys when writing vectors.
  *
- * `canEmbedKey` reads configuration, not capability: DeepSeek serves chat but
- * no `/v1/embeddings`, and a key configured with an embedding model it cannot
+ * canEmbedKey reads configuration, not capability: DeepSeek serves chat but
+ * no /v1/embeddings, and a key configured with an embedding model it cannot
  * serve looks embeddable. Ingestion therefore tries the key that matches the
  * stored space first and the remaining ones after it, so one misconfigured key
  * cannot block indexing that another key could have done.
  *
- * `matched` is reported separately: when the org already has vectors, indexing
+ * matched is reported separately: when the org already has vectors, indexing
  * into any other space would make them incomparable, and the caller must refuse
  * rather than silently re-space the org.
  */

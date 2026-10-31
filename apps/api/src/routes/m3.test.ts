@@ -217,7 +217,7 @@ describe("M3 ingestion: document upload, dedupe, list, read, reprocess", () => {
     expect(r.statusCode).toBe(415);
   });
 
-  test("POST /documents/upload refuses an image and says why", async () => {
+  test("POST /documents/upload refuses an image until a vision key exists", async () => {
     const boundary = "----M3Image";
     const r = await app.inject({
       method: "POST",
@@ -229,7 +229,7 @@ describe("M3 ingestion: document upload, dedupe, list, read, reprocess", () => {
       payload: multipart("portfolio.png", "not-really-a-png", "image/png", boundary),
     });
     expect(r.statusCode).toBe(415);
-    expect((r.json() as { error: string }).error).toMatch(/OCR or a vision model/i);
+    expect((r.json() as { error: string }).error).toMatch(/vision model/i);
   });
 
   // ─── List ──────────────────────────────────────────────────────────────────

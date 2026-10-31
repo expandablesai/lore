@@ -1,0 +1,1 @@
+ALTER TABLE "org_llm_keys" ADD COLUMN "vision_model" text;

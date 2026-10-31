@@ -17,6 +17,7 @@ import {
   listDocuments,
   getDocumentChunks,
   requeueDocument,
+  revealActiveLlmKeys,
   sendDocumentIngest,
   sendDocumentReprocess,
   createBoss,
@@ -38,10 +39,9 @@ const ALLOWED_MIMES = new Set([
 ]);
 
 /**
- * Images need OCR or a vision model to become text. Neither is part of this
- * deployment, and decoding the bytes as UTF-8 produces NUL-laden garbage that
- * cannot be stored — so refuse them with the reason instead of accepting a file
- * that is guaranteed to fail later.
+ * Images are indexed by describing them with the org's vision model, so they
+ * are only accepted from an org that has a key to describe them with — nothing
+ * else in the pipeline can read a picture.
  */
 const IMAGE_MIMES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
@@ -98,12 +98,14 @@ export const createDocumentRoutes: (db: Db) => FastifyPluginAsync = (db) => asyn
     // Determine MIME type
     const mime = file.mimetype || mimeFromExtension(extname(file.filename)) || "application/octet-stream";
     if (IMAGE_MIMES.has(mime)) {
-      return reply.code(415).send({
-        error:
-          "image ingestion needs OCR or a vision model, which is not configured — upload PDF, DOCX, XLSX, CSV, TXT, Markdown or HTML",
-      });
-    }
-    if (!ALLOWED_MIMES.has(mime)) {
+      const keys = await revealActiveLlmKeys(db, user.orgId);
+      if (keys.length === 0) {
+        return reply.code(415).send({
+          error:
+            "an image is indexed by having a vision model describe it, and this org has no LLM key — add a key with a vision model, then upload again",
+        });
+      }
+    } else if (!ALLOWED_MIMES.has(mime)) {
       return reply.code(415).send({ error: `unsupported MIME type: ${mime}` });
     }
 

@@ -15,16 +15,54 @@ import {
   type DocumentReprocessPayload,
 } from "@lore/db";
 import { deterministicEmbed, zeroPad, vectorToPgText, HASH_MODEL, HASH_DIM, EMBEDDING_DIM } from "@lore/core";
-import { createOpenAIEmbedder } from "@lore/proxy";
-import { extractByMime } from "./extract.ts";
+import { createOpenAIEmbedder, createOpenAIVisioner } from "@lore/proxy";
+import { extractByMime, type ExtractionResult } from "./extract.ts";
 
 const SHUTDOWN_SIGNALS = ["SIGTERM", "SIGINT"] as const;
+
+/** MIME types that carry pictures rather than text. */
+const IMAGE_MIMES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 /** Resolve a storage key to a local file path. */
 function resolveStoragePath(storageKey: string): string {
   // Storage keys are relative paths under the blobs directory
   const blobsDir = process.env.BLOBS_DIR ?? "/srv/lore/blobs";
   return `${blobsDir}/${storageKey}`;
+}
+
+/**
+ * Read an image into indexable text.
+ *
+ * Nothing else in the pipeline can see a picture: there is no OCR step and the
+ * text extractor refuses binary content. A vision model turns it into a
+ * description, and that description becomes the document's text, so an image
+ * can be found later by searching for what is in it.
+ */
+async function describeImage(
+  db: ReturnType<typeof createDb>,
+  orgId: string,
+  buffer: Buffer,
+  mime: string,
+): Promise<ExtractionResult> {
+  const { pickVisionKey, revealActiveLlmKeys } = await import("@lore/db");
+  const keys = await revealActiveLlmKeys(db, orgId);
+  const target = pickVisionKey(keys);
+  if (!target) {
+    throw new Error("no active LLM key can read images — add a key with a vision model");
+  }
+  const visioner = createOpenAIVisioner({
+    apiKey: target.key.apiKey,
+    baseUrl: target.key.baseUrl,
+  });
+  const description = await visioner.describe({
+    model: target.model,
+    imageDataUrl: `data:${mime};base64,${buffer.toString("base64")}`,
+  });
+  if (description === "") {
+    throw new Error(`vision model ${target.model} returned no description`);
+  }
+  const { chunkText } = await import("@lore/core");
+  return { pages: null, text: description, pageCount: null, chunks: chunkText(description) };
 }
 
 /** Core ingestion logic: extract → chunk → embed → persist. */
@@ -41,8 +79,10 @@ async function ingestDocument(
     const filePath = resolveStoragePath(storageKey);
     const buffer = await readFile(filePath);
 
-    // Extract text by MIME type
-    const result = await extractByMime(buffer, mime);
+    // Extract text by MIME type (images go through the org's vision model)
+    const result = IMAGE_MIMES.has(mime)
+      ? await describeImage(db, orgId, buffer, mime)
+      : await extractByMime(buffer, mime);
 
     // Clear previous derived data (for reprocess)
     await deleteDocumentDerived(db, documentId);

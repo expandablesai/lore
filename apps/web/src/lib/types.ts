@@ -138,6 +138,7 @@ export interface OrgLlmKey {
   chatModel: string;
   embedModel: string;
   embedDim: number;
+  visionModel: string | null;
   createdAt: string;
 }
 

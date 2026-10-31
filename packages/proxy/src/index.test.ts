@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createAnthropicAdapter, createOpenAIAdapter, createOpenAIEmbedder } from "./index.js";
+import { createAnthropicAdapter, createOpenAIVisioner, createOpenAIAdapter, createOpenAIEmbedder, listModels } from "./index.js";
 
 describe("openai adapter", () => {
   afterEach(() => {
@@ -176,5 +176,72 @@ describe("anthropic adapter", () => {
         messages: [{ role: "user", content: "x" }],
       }),
     ).rejects.toThrow(/401/);
+  });
+});
+
+describe("openai visioner", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("sends the image as a data URL beside the prompt and returns the description", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      new Response(
+        JSON.stringify({
+          id: "v1",
+          model: "strata-vision",
+          choices: [{ message: { role: "assistant", content: "  A composite of six saree photographs.  " } }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const visioner = createOpenAIVisioner({ apiKey: "sk-v", baseUrl: "http://strata.local:4000/v1" });
+    const text = await visioner.describe({
+      model: "strata-vision",
+      imageDataUrl: "data:image/png;base64,AAAA",
+    });
+
+    expect(text).toBe("A composite of six saree photographs.");
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe("http://strata.local:4000/v1/chat/completions");
+    const body = JSON.parse(String((init as RequestInit).body)) as {
+      model: string;
+      messages: { content: { type: string; image_url?: { url: string } }[] }[];
+    };
+    expect(body.model).toBe("strata-vision");
+    const parts = body.messages[0]?.content ?? [];
+    expect(parts[0]?.type).toBe("text");
+    expect(parts[1]?.type).toBe("image_url");
+    expect(parts[1]?.image_url?.url).toBe("data:image/png;base64,AAAA");
+  });
+
+  it("accepts a provider that returns the content as parts", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, _init: RequestInit) =>
+        new Response(
+          JSON.stringify({ choices: [{ message: { content: [{ type: "text", text: "a red saree" }] } }] }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+    const visioner = createOpenAIVisioner({ apiKey: "sk-v", baseUrl: "http://gw/v1" });
+    expect(await visioner.describe({ model: "m", imageDataUrl: "data:image/png;base64,AA" })).toBe("a red saree");
+  });
+
+  it("lists the models a gateway advertises", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, _init: RequestInit) =>
+        new Response(JSON.stringify({ data: [{ id: "strata-iq3-256" }, { id: "qwen2.5-vl-7b" }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+    const ids = await listModels({ apiKey: "sk-v", baseUrl: "http://gw/v1" });
+    expect(ids).toEqual(["strata-iq3-256", "qwen2.5-vl-7b"]);
   });
 });

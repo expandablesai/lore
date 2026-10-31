@@ -165,6 +165,7 @@ export interface AddLlmKeyInput {
   chatModel?: string;
   embedModel?: string;
   embedDim?: number;
+  visionModel?: string;
 }
 
 export interface RememberInput {
@@ -258,7 +259,7 @@ export const api = {
     request<OrgLlmKey[]>(`/orgs/${orgId}/llm-keys`, { token }),
 
   addLlmKey: (token: string, orgId: string, input: AddLlmKeyInput) =>
-    request<{ id: string; orgId: string; label: string; provider: string; apiType: string; baseUrl: string; chatModel: string; embedModel: string; embedDim: number; createdAt: string }>(
+    request<{ id: string; orgId: string; label: string; provider: string; apiType: string; baseUrl: string; chatModel: string; embedModel: string; embedDim: number; visionModel: string | null; createdAt: string }>(
       `/orgs/${orgId}/llm-keys`,
       { method: "POST", token, body: input },
     ),
@@ -268,6 +269,9 @@ export const api = {
 
   testLlmKey: (token: string, orgId: string, keyId: string) =>
     request<{ ok: boolean; model: string; reply: string }>(`/orgs/${orgId}/llm-keys/${keyId}/test`, { method: "POST", token }),
+
+  llmKeyModels: (token: string, orgId: string, keyId: string) =>
+    request<{ ok: boolean; models: string[] }>(`/orgs/${orgId}/llm-keys/${keyId}/models`, { method: "POST", token }),
 
   chat: (token: string, input: ChatInput) =>
     request<ChatReply>("/chat", { method: "POST", token, body: input }),

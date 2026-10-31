@@ -107,4 +107,20 @@ describe("M4 llm-keys: apiType dispatch, anthropic test + chat-only", () => {
     });
     expect(r.statusCode).toBe(404);
   });
+
+  test("POST .../models lists the model ids the provider advertises", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      new Response(JSON.stringify({ data: [{ id: "strata-iq3-256" }, { id: "qwen2.5-vl-7b" }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const r = await app.inject({
+      method: "POST", url: `/orgs/${orgId}/llm-keys/${keyId}/models`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(r.statusCode).toBe(200);
+    expect((r.json() as { models: string[] }).models).toEqual(["strata-iq3-256", "qwen2.5-vl-7b"]);
+  });
 });

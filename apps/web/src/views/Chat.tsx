@@ -160,8 +160,9 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
   const empty = turns.length === 0 && !loadingHistory;
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col">
-      <header className="glass sticky top-0 z-10 mb-4 flex items-center justify-between gap-4 rounded-2xl px-4 py-3">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      {/* The header is a sibling of the scrolling transcript, so it cannot scroll away. */}
+      <header className="glass mb-4 flex shrink-0 items-center justify-between gap-4 rounded-2xl px-4 py-3">
         <div>
           <h1 className="text-lg font-semibold tracking-tight text-slate-100">{t("Chat")}</h1>
           <p className="text-xs text-slate-400">
@@ -173,7 +174,7 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
         </Button>
       </header>
 
-      <div className="flex-1 overflow-y-auto pr-1">
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 pb-6">
           {empty && (
             <div className="glass glass-sheen rise rounded-3xl p-8 text-center">

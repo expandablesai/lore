@@ -148,7 +148,7 @@ export function Shell() {
   const activeChatId = route.startsWith("/chat/") ? route.slice("/chat/".length) : undefined;
 
   const sidebar = (
-    <aside className="glass neon-frame flex w-72 shrink-0 flex-col gap-5 rounded-3xl p-4">
+    <aside className="glass neon-frame flex h-full w-72 shrink-0 flex-col gap-5 overflow-hidden rounded-3xl p-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <BrainMark size={34} />
@@ -292,23 +292,31 @@ export function Shell() {
   );
 
   return (
-    <div className="flex min-h-screen gap-4 p-4">
-      <div className="hidden lg:block">{sidebar}</div>
+    /*
+     * The console owns the viewport: the sidebar and the chat header stay put
+     * and only the content scrolls. Before this, the shell grew with its
+     * content, so a long conversation (or a long list of recent chats in the
+     * sidebar) scrolled the whole page — taking the header with it.
+     */
+    <div className="flex h-screen gap-4 overflow-hidden p-4">
+      <div className="hidden h-full shrink-0 lg:block">{sidebar}</div>
 
       {menuOpen && (
         <div className="fixed inset-0 z-40 flex bg-black/40 backdrop-blur-sm lg:hidden" onClick={() => setMenuOpen(false)}>
-          <div onClick={(event) => event.stopPropagation()}>{sidebar}</div>
+          <div className="flex h-full max-h-full min-h-0" onClick={(event) => event.stopPropagation()}>
+            {sidebar}
+          </div>
         </div>
       )}
 
-      <main className="min-w-0 flex-1">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="mb-3 flex items-center gap-3 lg:hidden">
           <Button variant="ghost" onClick={() => setMenuOpen(true)} aria-label={t("Open menu")}>
             ☰
           </Button>
           <span className="text-sm font-medium text-slate-200">EXPANDABLES LORE</span>
         </div>
-        {view}
+        <div className="min-h-0 flex-1 overflow-y-auto">{view}</div>
       </main>
     </div>
   );

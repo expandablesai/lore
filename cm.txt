@@ -1,6 +1,0 @@
-lore: answer a question about the reader with text, not with pictures
-
-Only attach images when the question is about pictures, and keep image
-descriptions out of the text retrieval otherwise. An identity question was
-coming back with three character sheets attached and an answer that read as if
-nothing had been understood.

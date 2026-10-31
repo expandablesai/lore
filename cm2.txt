@@ -1,0 +1,8 @@
+lore: the console owns the viewport, so the chat header stops scrolling away
+
+The shell grew with its content: a long conversation, or a long list of recent
+chats in the sidebar, made the whole page scroll and took the chat header with
+it. The shell is now h-screen with overflow-hidden, the sidebar scrolls its own
+chat list, and only the main content scrolls. The chat view fills its slot
+instead of measuring the window, and its transcript is the only scroll area
+under a fixed header.

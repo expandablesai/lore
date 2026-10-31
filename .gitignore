@@ -12,3 +12,4 @@ data/
 backups/
 deploy/authelia/users_database.yml
 deploy/authelia/db.sqlite3
+deploy/caddy-root.crt

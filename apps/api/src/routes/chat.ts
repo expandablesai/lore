@@ -306,16 +306,25 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
         );
         const queryText = vectorToPgText(zeroPad(queryVector, EMBEDDING_DIM));
 
+        // Whether the question is about pictures. Decided before retrieval
+        // because it changes what counts as relevant: "what is my name" must not
+        // be answered with a character sheet.
+        const askedForImage = WANTS_IMAGE.test(question);
+
         const candidates = await withRls(db, user.orgId, user.id, async (tx) =>
           tx
             .select({ text: chunks.text, documentId: chunks.documentId })
             .from(embeddings)
             .innerJoin(chunks, eq(chunks.id, embeddings.entityId))
+            .innerJoin(documents, eq(documents.id, chunks.documentId))
             .where(
               and(
                 eq(embeddings.entityType, "chunk"),
                 eq(embeddings.model, model),
                 eq(chunks.orgId, user.orgId),
+                // A picture's description is only prose worth reading when the
+                // question is about pictures; otherwise it crowds out text.
+                askedForImage ? undefined : sql`${documents.mime} NOT LIKE 'image/%'`,
               ),
             )
             .orderBy(sql`${embeddings.vec} <=> ${queryText}::vector`)
@@ -340,11 +349,12 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
           if (rows.length >= 6) break;
         }
 
-        // Images the retrieved passages came from: the answer is standing on
-        // those descriptions, so the pictures belong with it.
+        // Images the retrieved passages came from, but only when the question
+        // was about pictures: an answer to "what is my name" that arrives with
+        // three character sheets reads as if nothing was understood.
         const retrievedDocIds = [...new Set(rows.map((r) => r.documentId))];
         const groundedImages: ChatImage[] =
-          retrievedDocIds.length === 0
+          retrievedDocIds.length === 0 || !askedForImage
             ? []
             : await withRls(db, user.orgId, user.id, async (tx) =>
                 tx
@@ -361,7 +371,6 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
 
         // "Show me…" searches the images for themselves: the picture is the
         // answer, so it should not have to win a text ranking to surface.
-        const askedForImage = WANTS_IMAGE.test(question);
         const imageMatches = askedForImage
           ? await withRls(db, user.orgId, user.id, async (tx) =>
               tx

@@ -1,0 +1,284 @@
+# EXPANDABLES LORE — project record
+
+The original plan for this system, and everything that has actually been built,
+verified and deployed up to this point. Written to be the single durable record:
+if only one document survives, it should be this one.
+
+Last updated: 2026-10-31 · deployed bundle `index-DLumDUVb.js` · commit `67caeee`
+· VM `10.20.10.52` (`/opt/lore`) · 206 tests green.
+
+---
+
+## 1. The brief
+
+People's working memory is scattered across chat windows, documents, screenshots
+and code, and each AI tool keeps its own private, unauditable copy of a fragment
+of it. LORE is the opposite: a **self-hosted, multi-tenant memory system** where
+one organisation's documents, images and conversations live on its own disk, in
+its own Postgres, behind its own login — and where every fact it stores can be
+traced to a source, scoped, disputed, or forgotten on request.
+
+Four properties were treated as non-negotiable, because they are what make it a
+memory system rather than a vector search demo:
+
+1. **Provenance** — an assertion cannot exist without a source (`sources` is
+   required; a remember with no source is rejected by the API).
+2. **Trust tiers** — T0 material is quarantined and can never be asserted; the
+   event chain enforces `0..3` in the database, not just in the UI.
+3. **Scopes** — personal / project / org, carried on documents and assertions.
+4. **Forgetting** — a forget is a *cascade* with a receipt (assertion, its
+   documents, their chunks and vectors), not a soft-delete flag.
+
+## 2. The original plan
+
+### Definition of done (the four phases)
+
+| Phase | Requirement |
+| --- | --- |
+| **A** | The proxy calls `/v1/chat/completions` over HTTPS against the configured provider, using **per-org API keys encrypted in Postgres**. |
+| **B** | **Real embeddings** from the configured provider + **pgvector cosine** semantic recall. |
+| **C** | In-app **chat UI** that replies using memory retrieval. |
+| **D** | **Cloudflare Workers AI** selectable as a provider, **Authelia in front**, documents stored on **local disk** (`/srv/lore/blobs`), reachable over public DNS/Tunnel. |
+
+Each phase had to build clean (`pnpm -r build`), pass the gates
+(`pnpm -r typecheck`, `pnpm -r test`), and be **verified on the VM** — not just
+locally.
+
+### Milestones
+
+| # | Scope | Exit criteria |
+| --- | --- | --- |
+| **M0** | monorepo skeleton, config, Drizzle schema, compose (pg17 + pgvector), RLS proof, MCP hello-world, CI | RLS test: user A cannot read user B; `tools/list` works |
+| **M1** | auth (argon2 + TOTP + sessions), orgs/users/projects, roles, audit | superadmin bootstrap → second user isolated |
+| **M2** | memory core: events, assertions, trust, forget + receipt | poison corpus: zero promotions |
+| **M3** | ingestion: PDF/DOCX/XLSX/CSV/MD/TXT/HTML/images, chunking, embedding, jobs | 200-page PDF + XLSX searchable with citations |
+| **M4** | retrieval + compiler + bench harness | compiler ≥ 10 pts over naive top-k at equal tokens |
+| **M5** | MCP tools + proxy + capture | an agent cites LORE; a 10-turn proxy session is captured |
+| **M6a/b/c** | admin console: auth/dashboard/org, memory CRUD/audit, browser/conflicts/jobs | a second person administers the org without docs |
+| **M7** | maintenance, backup/restore, export/import, doctor | SIGKILL chaos + restore verified |
+| **M8** | Docker image, compose, install, docs, release | clean-VM install < 15 min |
+
+### Architecture as planned
+
+- **pnpm workspace**: `apps/{api,web,worker}`, `packages/{core,db,proxy,ui,mcp}`.
+- **API**: Fastify 5 + `fastify-type-provider-zod`.
+- **DB**: Postgres 17 + pgvector, drizzle-orm; `embeddings.vec vector(3072)` and
+  cosine distance `<=>`; per-request RLS transactions for tenant isolation.
+- **Jobs**: pg-boss (`document.ingest`, `document.reprocess`).
+- **LLM layer**: a provider adapter (OpenAI-compatible + Anthropic), with
+  per-org keys holding provider, base URL, chat model, embedding model,
+  embedding dimension, and an optional vision model.
+- **Edge**: Caddy (TLS, SPA, `/api` proxy) with Authelia `forward_auth` in front.
+
+## 3. What is built
+
+Everything below is on `master`, deployed, and covered by tests.
+
+### Platform and deployment
+
+- Monorepo, Dockerfile, compose stack: `db` (pgvector/pg17), `app`, `worker`,
+  `web` (one-shot dist copier), `caddy`, `authelia`.
+- Migrations `0000`–`0009` (including `pg_trgm` for lexical recall), applied with
+  `pnpm --filter @lore/db migrate`; migration ordering on a running deployment is
+  documented because `run --rm app` executes the *current image*.
+- Documents and avatars live on the VM's disk under `/srv/lore/blobs` (mounted
+  into `app` and `worker`); Postgres data under `/srv/lore/pgdata`.
+- Authelia 4 gate in front of the console (`dushyant.com` family, internal CA
+  TLS), with a 12 h session / 1 h inactivity, plus the app's own bearer sessions.
+
+### Auth and tenancy
+
+- Signup/login/session (argon2, SHA-256 token digests — the plaintext token is
+  never stored), roles `viewer/member/org_admin/superadmin`, audit rows on every
+  mutation.
+- **Tenant isolation is enforced and tested** (suite `m7`): role fields are
+  validated and capped at the caller's own rank (no self-promotion to
+  superadmin), user/assertion/LLM-key/project lookups are all scoped by org, and
+  an id from another org returns 404 rather than touching a foreign row.
+
+### Memory core (M2)
+
+- `events` hash chain (each event carries the previous hash; tampering breaks the
+  chain), `assertions` with scope + trust + status, `remember` / `recall` /
+  `forget` endpoints, forget cascade with a receipt.
+- Recall is hybrid: `pg_trgm` subject similarity **OR** semantic nearest
+  documents, and it degrades to the local hash vector space instead of failing
+  when the org has no embed-capable key.
+
+### Ingestion (M3)
+
+- Text extraction for PDF, DOCX, XLSX, CSV, MD, TXT, HTML; images are indexed by
+  having the org's **vision model describe them**, so a picture becomes findable
+  text.
+- Chunking targets ~500 tokens, splits on paragraphs then sentences, and
+  hard-cuts pathological content (minified JSON, base64, one long line);
+  per-page chunking preserves page numbers for citation.
+- Embeddings: real provider vectors when a key can embed (in batches, one vector
+  per chunk, refusing partial replies), deterministic hash vectors otherwise. The
+  org is **pinned to one vector space**: ingestion re-uses the model its existing
+  vectors came from, and refuses rather than silently mixing models.
+- Ingestion is **transactional**: extract → embed → (delete old derived rows,
+  write chunks, write vectors, mark indexed) in one transaction, so a failure or
+  a crash can never leave a half-indexed document, and a reprocess that cannot
+  embed leaves the previous index intact.
+- Zero-byte uploads and files with no extractable text are refused instead of
+  becoming "indexed" with nothing in them.
+
+### Retrieval and chat (M4/M5/C)
+
+- `/chat` embeds the question in the stored space, retrieves the top chunks by
+  cosine distance, grounds the model with them, and returns the reply together
+  with the images the answer rests on.
+- A capabilities prompt stops the model claiming it can generate images, browse
+  or run code.
+- Conversations are persisted (`chats`, `chat_messages`), named after their first
+  question, listable/deletable from the sidebar, and reloadable.
+- A question that asks for a picture ("show me the character sheet") also
+  searches image documents directly, so the picture surfaces as the answer.
+
+### Configurable multi-provider LLM layer (A/D)
+
+- Per-org keys, encrypted at rest (`LORE_ENCRYPTION_KEY`), never returned to a
+  client; providers: `openai`, `deepseek`, `ollama`, `strata`, `workers-ai`,
+  `custom`, plus an Anthropic chat-only fast-follow.
+- Each key carries base URL, chat model, embedding model, embedding dimension,
+  optional vision model, and an enable/disable switch that keeps the row.
+- "Test" tests what the key is actually *for*: if chat is refused but the key has
+  an embedding model, it pings `/embeddings` and reports `embedding only — N
+  dimensions` rather than calling a working key broken. "Models" lists the
+  provider's catalogue (with the correct Anthropic auth headers) so a vision
+  model is picked by name instead of guessed.
+
+### Console (M6, D)
+
+- React SPA with a hash router: Dashboard, Chat, Documents, Memory, Members,
+  LLM Keys, Profile — plus recent chats in the sidebar.
+- Liquid-glass UI with day/night/auto, a toggleable RGB neon layer rendered as
+  **light under the glass** (blurred conic gradients beneath each pane, not an
+  outline), and a 3D-ish AI-brain mark as the logo.
+- Chat: ChatGPT-shaped thread, per-image download, "download all", full-screen
+  viewer (Esc to close), user avatars beside bubbles.
+- Paste → **the top of the Memory page**: text and/or images, Save & index,
+  receipt per item showing mime, size, chunks, saved/indexed timestamps and who
+  uploaded it.
+- Documents: list with uploader and chunk counts, detail with chunks and
+  provenance, file download/reprocess.
+- Profile: avatar upload/remove, display name, theme and neon controls.
+
+## 4. How it is verified
+
+- `pnpm -r build`, `pnpm -r typecheck`, `pnpm -r test` — currently **206 tests**:
+  api 72, web 59, core 26, worker 20, db 18, proxy 10, mcp 1.
+- Live checks on the VM (`10.20.10.52`) after each deploy: health, upload →
+  indexed with the expected scope, chunk count and embedding model, blob
+  byte-for-byte round trip, reprocess, recall (lexical + semantic), a real chat
+  turn against the configured provider, and refusal paths (empty file, unsupported
+  MIME, cross-tenant read, privilege escalation).
+- The edge is checked with SNI: page → 302 to the Authelia portal, `/api/…` →
+  401 JSON, assets gated while unauthenticated.
+
+## 5. The journey (58 commits, oldest first)
+
+```
+eb76d40 M0 monorepo with deploy pipeline
+e655ca2 record pushed remote URL and mark dev-box bootstrap complete
+ff9fce3 install pnpm in runtime image stage so one-off migrate/apply-rls work
+48accff auth vertical (signup, login, session) with vitest coverage
+40ecc0c M1 orgs/users/projects routes with auth guard and audit trail
+e725355 M2 memory routes (remember, recall, forget) with scope and trust
+f11c552 M2 memory routes with per-request RLS tx wrapper and cross-tenant proof
+c94a275 schema RLS proof tests run as lore_app, not superuser
+22cc3b6 session 10 handoff doc
+f567c75 M2 memory hash-chain events, T0 enforcement, forget cascade
+bd625b7 M3 document ingestion pipeline (chunking, deterministic embedding, pg-boss jobs)
+6b7a08b build admin console SPA (auth session, documents, memory, members)
+4bb4c47 fix worker build type errors and make apply-rls idempotent
+4afd488 declare pg-boss in apps/api so the bundled server resolves it at runtime
+83433e0 add real OpenAI adapter, per-org encrypted LLM keys, admin UI
+9360c12 real OpenAI embeddings, 3072-dim pgvector, semantic recall
+0ab537e add in-app chat UI and POST /chat route with memory retrieval
+6b24aef wire LORE_ENCRYPTION_KEY into app/worker compose env + runbook
+7a30394 harden runbook smoke with API readiness wait
+37bc864 configurable multi-provider LLM keys (base URL + chat/embed models + dimension)
+ea2f9e7 anthropic chat-only adapter + apiType dispatch + claude preset
+3d9143f worker declares postgres dep for bundled db client
+1b1d93c add pg_trgm migration for lexical recall operator
+f059f39 add Workers AI provider and raise body limits for large uploads
+8e13e90 mount /srv/lore/blobs volume into app and worker containers
+20d228b add Authelia gateway with Caddy forward_auth
+24a7e77 fix Authelia config for v4 schema
+88b00a6 fix Authelia config validation errors
+8ed7d1e rename Authelia config to configuration.yml
+58c3a6b authelia users db outside git, non-AUTHELIA env names, state volume
+a9efbeb TLS edge via caddy internal CA, dedicated auth host for authelia portal
+e1f1e25 strip /api prefix before proxying to the fastify app
+3c6b843 fix raw pgvector SQL so it does not assume a lore schema
+49955c4 authelia healthcheck uses wget so it reports healthy
+0f6e788 ignore the exported edge CA certificate
+3137515 add elevated edge setup script for hosts and CA trust
+181eefd re-run ingestion when the same file is uploaded after a failed index
+58f42aa embed with the model the stored vectors came from
+dc501dc let a key that cannot embed fall through to one that can
+f7246c4 add split-key end-to-end verification script
+4bb42c7 a lapsed portal session no longer reads as a network error
+8416c14 mount the Caddy config directory so a rewritten Caddyfile is seen
+be6b1ba replace the published SPA bundle instead of layering over it
+d4fb68c Enter sends a chat message, Shift+Enter starts a new line
+b83a952 stop an unindexable upload from taking the worker with it
+b8244da index images by describing them with a vision model
+54ec3dc document the migration order that bites on a running deployment
+3bfd3ea upload many files at once, and let chat hand back the images
+bf9a63b keep the model's markdown image link out of the chat text
+283a8c1 glass console, day/night theme, and saved chat history
+631c3ee drop a throwaway database probe
+075bfce switch a provider key off without losing it, plus an RGB neon layer
+a23d2ab paste capture with receipts, documents that say who and when, profile pictures, brain mark
+228ad20 a blank assistant turn no longer breaks the next question
+b7fab94 neon as light under the glass, and a Test button that knows what the key is for
+7881760 paste is the top of Memory, not a sidebar destination
+fb6f21f runbook — the shared image is built by app, not web
+67caeee close the tenant holes, and stop ingestion from losing documents
+```
+
+## 6. Current state
+
+- **VM** `expandables-lab` `10.20.10.52`, repo `/opt/lore`, stack up:
+  `lore-app-1`, `lore-worker-1`, `lore-db-1`, `lore-caddy-1`,
+  `lore-authelia-1`, `lore-web-1` (one-shot, exits 0).
+- **Console** served from `web_dist`, gated by Authelia at the edge.
+- **Org** (owner) holds the screenplay
+  `THE_RED_BUTTON_EN_28_EPISODES_WITH_DIALOGUE.docx` plus six indexed PNGs, all
+  with uploader and timestamps; embeddings are `nomic-embed-text` (768 dims,
+  zero-padded into the 3072 column), so recall and chat share one vector space.
+- **Keys**: one chat-capable gateway key (Strata), two Ollama keys
+  (`llama3.1` + `nomic-embed-text`), and a DeepSeek key kept disabled.
+
+## 7. Known gaps / next steps
+
+- **Public DNS + Cloudflare Tunnel** for `lore.dushyant.com` / `auth.dushyant.com`
+  — the last unbuilt piece of phase D; tunnel creation needs dashboard OAuth,
+  which an API token cannot do.
+- **Image generation** is explicitly out of scope (the model is told it cannot
+  draw); it would need a separate image-model provider.
+- Retrieval depth is top-6 chunks with no per-document or per-episode scoping.
+- A worker that dies mid-job can leave a document in `extracting` (no heartbeat
+  or startup reconciliation yet); re-uploading the same bytes is then treated as
+  already present.
+- The deployment runs a single worker; multi-worker claim semantics have not been
+  exercised.
+- The M2/M4 "compiler" idea (a context compiler benchmarked against naive top-k)
+  and M7 backup/restore/doctor have not been built the way the plan described;
+  the shipped system retrieves directly.
+
+## 8. Operating rules that must not be broken
+
+- `LORE_ENCRYPTION_KEY` is **immutable**: regenerating it makes every stored API
+  key undecryptable.
+- One embedding space per org: never index into a second model while vectors from
+  the first exist; re-index instead.
+- The `vector(3072)` column is fixed; provider vectors are zero-padded (or
+  truncated) to fit.
+- Never echo key material or session tokens into logs or the console.
+- Build the shared image with `build app` (not `build web`), then re-create the
+  one-shot `web` container to publish a new bundle; verify `/srv/assets` inside
+  Caddy.

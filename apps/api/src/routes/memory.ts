@@ -72,7 +72,9 @@ export const createMemoryRoutes: (db: Db) => FastifyPluginAsync = (db) => async 
    *
    * It writes nothing, including no message and no fact.
    */
-  app.get<{ Querystring: { q?: string } }>("/recall/context", async (request, reply) => {
+  app.get<{ Querystring: { q?: string; limit?: string; perDocument?: string; candidates?: string } }>(
+    "/recall/context",
+    async (request, reply) => {
     const user = request.user;
     const question = (request.query.q ?? "").trim();
     if (question === "") return reply.code(400).send({ error: "q is required" });
@@ -80,10 +82,35 @@ export const createMemoryRoutes: (db: Db) => FastifyPluginAsync = (db) => async 
       return reply.code(400).send({ error: "q must be 500 characters or fewer" });
     }
 
+    // Optional, for measuring: `/chat` always uses the shipped constants. A
+    // benchmark that cannot vary them can only describe the current number, never
+    // choose it.
+    const bound = (raw: string | undefined, max: number, name: string): number | undefined | null => {
+      if (raw === undefined) return undefined;
+      const value = Number(raw);
+      if (!Number.isInteger(value) || value < 1 || value > max) return null;
+      return value;
+    };
+    const limits = {
+      limit: bound(request.query.limit, 12, "limit"),
+      perDocument: bound(request.query.perDocument, 20, "perDocument"),
+      candidates: bound(request.query.candidates, 100, "candidates"),
+    };
+    if (limits.limit === null || limits.perDocument === null || limits.candidates === null) {
+      return reply.code(400).send({
+        error: "limit must be 1-12, perDocument 1-20, candidates 1-100",
+      });
+    }
+
     const context = await selectContext(db, {
       orgId: user.orgId,
       userId: user.id,
       question,
+      limits: {
+        limit: limits.limit,
+        perDocument: limits.perDocument,
+        candidates: limits.candidates,
+      },
     });
 
     const describe = (row: (typeof context.candidates)[number], rank: number) => ({
@@ -102,10 +129,11 @@ export const createMemoryRoutes: (db: Db) => FastifyPluginAsync = (db) => async 
       candidateCount: context.candidates.length,
       facts: context.facts,
       selected: context.selected.map(describe),
-      naive: context.candidates.slice(0, PASSAGE_LIMIT).map(describe),
+      naive: context.candidates.slice(0, limits.limit ?? PASSAGE_LIMIT).map(describe),
       dropped: context.dropped,
     };
-  });
+    },
+  );
 
   app.post<{ Body: { scope: string; subject: string; predicate: string; object: string; sources: unknown[]; trust?: number } }>(
     "/remember",

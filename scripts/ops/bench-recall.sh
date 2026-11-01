@@ -53,6 +53,25 @@ trap '"${COMPOSE[@]}" exec -T db psql -U "$DB_USER" -d "$DB_NAME" -q -c \
   "delete from sessions where token_hash = '"'"'$HASH'"'"'" >/dev/null 2>&1 || true' EXIT
 
 echo "LORE recall benchmark — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+# Scoring the same golden set at a different cap is how a tuning decision gets
+# made on evidence, so the sweep runs this script against itself with the cap
+# passed through to the inspector. `/chat` never sees these numbers; they exist
+# only here.
+if [ "${SWEEP:-0}" = "1" ]; then
+  echo "sweeping the per-document cap (everything else at its shipped value)"
+  echo
+  printf '%-14s %-38s %s\n' "perDocument" "rank (hit@1 / MRR)" "evidence diversity"
+  for per_doc in 1 2 3 4 6 8; do
+    line=$(SWEEP=0 SUMMARY_ONLY=1 PER_DOC="$per_doc" bash "$0" 2>/dev/null |
+      grep -E '^(naive|compiled|diversity)' | tr '\n' '|')
+    ranks=$(printf '%s' "$line" | tr '|' '\n' | grep '^compiled' | sed 's/^compiled *//')
+    div=$(printf '%s' "$line" | tr '|' '\n' | grep '^diversity' | sed 's/^diversity *//')
+    printf '%-14s %-38s %s\n' "$per_doc" "$ranks" "$div"
+  done
+  exit 0
+fi
+
 echo "golden set: $GOLDEN ($(grep -cvE '^\s*(#|$)' "$GOLDEN") questions)"
 echo
 
@@ -61,6 +80,16 @@ GOLDEN_TEXT=$(grep -vE '^\s*(#|$)' "$GOLDEN") TOKEN="$TOKEN" \
     -e GOLDEN_TEXT -e TOKEN app node - <<'JS'
 const base = "http://127.0.0.1:3001";
 const token = process.env.TOKEN;
+const summaryOnly = process.env.SUMMARY_ONLY === "1";
+const overrides = new URLSearchParams();
+for (const [param, value] of [
+  ["limit", process.env.LIMIT],
+  ["perDocument", process.env.PER_DOC],
+  ["candidates", process.env.CAND],
+]) {
+  if (value) overrides.set(param, value);
+}
+const extra = overrides.toString() ? `&${overrides}` : "";
 const lines = (process.env.GOLDEN_TEXT || "").split("\n").map((l) => l.trimEnd()).filter(Boolean);
 
 const metric = (rows, doc) => {
@@ -79,7 +108,7 @@ const rank = (value) => (value === null ? "miss" : `#${value}`);
   for (const line of lines) {
     const [question, doc] = line.split("\t");
     if (!question || !doc) continue;
-    const url = `${base}/recall/context?q=${encodeURIComponent(question)}`;
+    const url = `${base}/recall/context?q=${encodeURIComponent(question)}${extra}`;
     let body;
     try {
       const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
@@ -102,14 +131,17 @@ const rank = (value) => (value === null ? "miss" : `#${value}`);
     });
   }
 
-  console.log(`${pad("question", 46)} ${pad("expected", 22)} cand drop  docs  naive compiled`);
-  console.log("-".repeat(46 + 1 + 22 + 1 + 4 + 1 + 4 + 1 + 5 + 1 + 6 + 1 + 9));
-  for (const r of results) {
-    const flag = r.compiled === r.naive ? "" : r.compiled !== null && (r.naive === null || r.compiled < r.naive) ? " +" : " -";
-    console.log(
-      `${pad(r.question, 46)} ${pad(r.doc, 22)} ${pad(r.candidates, 4)} ${pad(r.dropped, 4)} ${pad(`${r.naiveDocs}/${r.compiledDocs}`, 5)} ` +
-        `${pad(rank(r.naive), 6)} ${pad(rank(r.compiled), 9)}${flag}`,
-    );
+  if (!summaryOnly) {
+    console.log(`${pad("question", 46)} ${pad("expected", 22)} cand drop  docs  naive compiled`);
+    console.log("-".repeat(46 + 1 + 22 + 1 + 4 + 1 + 4 + 1 + 5 + 1 + 6 + 1 + 9));
+    for (const r of results) {
+      const flag = r.compiled === r.naive ? "" : r.compiled !== null && (r.naive === null || r.compiled < r.naive) ? " +" : " -";
+      console.log(
+        `${pad(r.question, 46)} ${pad(r.doc, 22)} ${pad(r.candidates, 4)} ${pad(r.dropped, 4)} ${pad(`${r.naiveDocs}/${r.compiledDocs}`, 5)} ` +
+          `${pad(rank(r.naive), 6)} ${pad(rank(r.compiled), 9)}${flag}`,
+      );
+    }
+    console.log();
   }
 
   const summarise = (key, label) => {
@@ -131,7 +163,7 @@ const rank = (value) => (value === null ? "miss" : `#${value}`);
   const avg = (key) => (results.reduce((sum, r) => sum + r[key], 0) / (results.length || 1)).toFixed(1);
   console.log();
   console.log(
-    `evidence diversity — distinct documents among the six passages: naive ${avg("naiveDocs")}, compiled ${avg("compiledDocs")} (of 6 possible)`,
+    `diversity: distinct documents among the passages — naive ${avg("naiveDocs")}, compiled ${avg("compiledDocs")} (of 6 possible)`,
   );
   console.log(`compiled ranks the expected document better on ${better} question(s), worse on ${worse}.`);
   if (dropped === 0) {

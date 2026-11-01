@@ -118,6 +118,14 @@ describe("M11 retrieval inspector", () => {
       headers: { authorization: `Bearer ${token}` },
     });
 
+  /** For the parameters that are not the question. */
+  const inspectRaw = (query: string) =>
+    app.inject({
+      method: "GET",
+      url: `/recall/context?${query}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
   test("an unauthenticated caller is refused", async () => {
     const r = await app.inject({ method: "GET", url: "/recall/context?q=lighthouse" });
     expect(r.statusCode).toBe(401);
@@ -181,8 +189,27 @@ describe("M11 retrieval inspector", () => {
     expect(body.facts).toContainEqual({ predicate: "name", object: "Mira" });
   });
 
-  test("asking what the model would see creates no conversation and no message", async () => {
-    const count = async (table: "chats" | "chat_messages") => {
+  test("the cap can be varied for measurement, and a bad value is a 400", async () => {
+    // Three passages from one document instead of two: this is what makes the
+    // golden set re-scorable at a different cap without a redeploy.
+    const wider = await inspectRaw("q=who+keeps+the+lighthouse&perDocument=3");
+    expect(wider.statusCode).toBe(200);
+    expect((wider.json() as { selected: unknown[] }).selected.length).toBe(3);
+
+    const narrower = await inspectRaw("q=who+keeps+the+lighthouse&limit=1");
+    const narrowed = narrower.json() as { selected: unknown[]; naive: unknown[] };
+    expect(narrowed.selected.length).toBe(1);
+    expect(narrowed.naive.length).toBe(1);
+
+    const bad = await inspectRaw("q=lighthouse&perDocument=0");
+    expect(bad.statusCode).toBe(400);
+    expect((bad.json() as { error: string }).error).toContain("perDocument");
+
+    const tooMany = await inspectRaw("q=lighthouse&candidates=1000");
+    expect(tooMany.statusCode).toBe(400);
+  });
+
+  test("asking what the model would see creates no conversation and no message", async () => {    const count = async (table: "chats" | "chat_messages") => {
       const rows = (await db.execute(
         sql`select count(*)::int as n from ${sql.raw(table)} where org_id = ${orgId}`,
       )) as unknown as { n: number }[];

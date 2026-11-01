@@ -140,10 +140,17 @@ export async function buildQueryVector(
   return { vec: deterministicEmbed(question, HASH_DIM), model: HASH_MODEL };
 }
 
-/** Up to CANDIDATE_LIMIT chunks, best cosine match first. */
+/** Up to `limit` chunks, best cosine match first. */
 export async function rankCandidates(
   db: Db,
-  input: { orgId: string; userId: string; queryText: string; model: string; askedForImage: boolean },
+  input: {
+    orgId: string;
+    userId: string;
+    queryText: string;
+    model: string;
+    askedForImage: boolean;
+    limit?: number;
+  },
 ): Promise<Candidate[]> {
   return withRls(db, input.orgId, input.userId, async (tx) =>
     tx
@@ -168,7 +175,7 @@ export async function rankCandidates(
         ),
       )
       .orderBy(sql`${embeddings.vec} <=> ${input.queryText}::vector`)
-      .limit(CANDIDATE_LIMIT),
+      .limit(input.limit ?? CANDIDATE_LIMIT),
   );
 }
 
@@ -212,10 +219,29 @@ export function applyPassageCap(
   return { selected, dropped };
 }
 
+/**
+ * Optional limits, for measuring rather than for answering.
+ *
+ * `/chat` never passes them: the product's numbers are the constants above. The
+ * inspector does, so the golden set can be re-scored at a different cap without a
+ * redeploy — which is the only way a tuning decision can be made on evidence.
+ */
+export interface ContextLimits {
+  candidates?: number;
+  limit?: number;
+  perDocument?: number;
+}
+
 /** Everything `/chat` needs from retrieval, and everything the inspector shows. */
 export async function selectContext(
   db: Db,
-  input: { orgId: string; userId: string; question: string; keys?: RevealedKey[] },
+  input: {
+    orgId: string;
+    userId: string;
+    question: string;
+    keys?: RevealedKey[];
+    limits?: ContextLimits;
+  },
 ): Promise<CompiledContext> {
   const keys = input.keys ?? (await revealActiveLlmKeys(db, input.orgId));
   const storedModel = await dominantEmbeddingModel(db, input.orgId);
@@ -229,8 +255,13 @@ export async function selectContext(
     queryText,
     model,
     askedForImage,
+    limit: input.limits?.candidates ?? CANDIDATE_LIMIT,
   });
-  const { selected, dropped } = applyPassageCap(candidates);
+  const { selected, dropped } = applyPassageCap(
+    candidates,
+    input.limits?.limit ?? PASSAGE_LIMIT,
+    input.limits?.perDocument ?? PASSAGES_PER_DOCUMENT,
+  );
   const facts = await loadSelfFacts(db, input.orgId, input.userId);
 
   return { model, queryText, askedForImage, candidates, selected, dropped, facts };

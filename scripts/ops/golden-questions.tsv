@@ -1,0 +1,23 @@
+# The golden set for scripts/ops/bench-recall.sh
+#
+# question <TAB> the filename that should answer it
+#
+# Hand-written against the real corpus on the VM. A label is a claim about what
+# the workspace actually contains, so when a document is deleted or renamed, its
+# lines have to change with it — otherwise the benchmark starts scoring the
+# label rather than retrieval.
+#
+# Keep the questions phrased the way a person would ask them; a question written
+# in the corpus's own words makes every retriever look good.
+which migration dropped Spanish from the locale enum	PROJECT-RECORD.md
+how does the abandoned extraction reaper decide a document is stuck	PROJECT-RECORD.md
+what happens when a password is changed	PROJECT-RECORD.md
+what does the doctor check about backups	OPERATIONS.md
+how do I restore a backup into a throwaway database	OPERATIONS.md
+what does the lock checker refuse	LOCKED-FEATURES.md
+which colours are in the design system palette	LOCKED-DESIGN.md
+what happens in the opening episode of the red button	THE_RED_BUTTON_EN_28_EPISODES_WITH_DIALOGUE.docx
+what did I write about a dedicated physical iPhone	dushyant-a-dedicated-physical-iphone-would-give--2026-10-31-15-05.md
+which image identity did I ask to lock	attached-image-is-my-image-identity-lock-it-and--2026-10-31-15-38.md
+show me the cinematic character sheet	Cinematic Character Sheet.png
+what does the midnight detective look like	Midnight Detective on Wet Streets.png

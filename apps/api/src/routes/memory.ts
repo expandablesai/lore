@@ -15,6 +15,7 @@ import type { FastifyPluginAsync } from "fastify";
 import type { AuthenticatedUser } from "../plugins/auth-guard.ts";
 import { createOpenAIEmbedder } from "@lore/proxy";
 import { deterministicEmbed, zeroPad, vectorToPgText, HASH_DIM, EMBEDDING_DIM, HASH_MODEL } from "@lore/core";
+import { PASSAGE_LIMIT, selectContext } from "../retrieval.js";
 
 const ROLE_RANK: Record<string, number> = { viewer: 0, member: 1, org_admin: 2, superadmin: 3 };
 
@@ -57,6 +58,53 @@ async function recallVector(
 export const createMemoryRoutes: (db: Db) => FastifyPluginAsync = (db) => async (app) => {
   app.addHook("preHandler", async (request, reply) => {
     if (!request.user) return reply.code(401).send({ error: "unauthorized" });
+  });
+
+  /**
+   * What the answer will be built from, before any answer is written.
+   *
+   * Read-only, and deliberately the same code path `/chat` uses (both call
+   * `selectContext`), so it cannot describe a selection the product does not
+   * make. Three lists come back: `selected` is what the model receives, `naive`
+   * is the plain top-6 by cosine with no per-document cap, and `candidates` is
+   * everything the ranking offered — the comparison the M4 benchmark measures,
+   * available without reimplementing the ranking in the benchmark.
+   *
+   * It writes nothing, including no message and no fact.
+   */
+  app.get<{ Querystring: { q?: string } }>("/recall/context", async (request, reply) => {
+    const user = request.user;
+    const question = (request.query.q ?? "").trim();
+    if (question === "") return reply.code(400).send({ error: "q is required" });
+    if (question.length > 500) {
+      return reply.code(400).send({ error: "q must be 500 characters or fewer" });
+    }
+
+    const context = await selectContext(db, {
+      orgId: user.orgId,
+      userId: user.id,
+      question,
+    });
+
+    const describe = (row: (typeof context.candidates)[number], rank: number) => ({
+      rank,
+      documentId: row.documentId,
+      filename: row.filename,
+      mime: row.mime,
+      distance: Number(row.distance.toFixed(6)),
+      excerpt: row.text.replace(/\s+/g, " ").slice(0, 160),
+    });
+
+    return {
+      question,
+      model: context.model,
+      askedForImage: context.askedForImage,
+      candidateCount: context.candidates.length,
+      facts: context.facts,
+      selected: context.selected.map(describe),
+      naive: context.candidates.slice(0, PASSAGE_LIMIT).map(describe),
+      dropped: context.dropped,
+    };
   });
 
   app.post<{ Body: { scope: string; subject: string; predicate: string; object: string; sources: unknown[]; trust?: number } }>(

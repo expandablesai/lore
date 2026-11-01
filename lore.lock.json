@@ -1,7 +1,7 @@
 {
   "version": 1,
   "lockedAt": "2026-10-31T16:50:24.597Z",
-  "updatedAt": "2026-10-31T16:51:59.995Z",
+  "updatedAt": "2026-11-01T00:42:13.189Z",
   "reason": "owner request: freeze the current design system and feature surface as of 2026-11-01",
   "changelog": [
     {
@@ -43,6 +43,13 @@
         "route+ GET /documents  <- apps/api/src/routes/documents.ts",
         "route- GET /documents/  <- apps/api/src/routes/documents.ts"
       ]
+    },
+    {
+      "at": "2026-11-01T00:42:13.190Z",
+      "reason": "owner approved a read-only retrieval inspector: GET /recall/context, so the M4 benchmark measures the real selection instead of a copy of it",
+      "changed": [
+        "route+ GET /recall/context  <- apps/api/src/routes/memory.ts"
+      ]
     }
   ],
   "design": {
@@ -71,6 +78,7 @@
     "GET /projects/:id  <- apps/api/src/routes/projects.ts",
     "GET /projects/:id/members  <- apps/api/src/routes/projects.ts",
     "GET /readyz  <- apps/api/src/routes/health.ts",
+    "GET /recall/context  <- apps/api/src/routes/memory.ts",
     "GET /users/:id/avatar  <- apps/api/src/routes/users.ts",
     "PATCH /chats/:id  <- apps/api/src/routes/chats.ts",
     "PATCH /me  <- apps/api/src/routes/users.ts",

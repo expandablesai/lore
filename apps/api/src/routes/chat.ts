@@ -1,29 +1,25 @@
 import { z } from "zod";
-import { and, desc, eq, inArray, like, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, like, ne, sql } from "drizzle-orm";
 import {
   appendMessage,
   assertions,
-  canEmbedKey,
   chatMessages,
   chats,
   chunks,
   createChat,
   documents,
-  dominantEmbeddingModel,
   embeddings,
   getChat,
   pickChatKey,
-  pickEmbedKey,
   revealActiveLlmKeys,
   titleFrom,
   type Db,
-  type RevealedKey,
   withRls,
 } from "@lore/db";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
-import { createAnthropicAdapter, createOpenAIAdapter, createOpenAIEmbedder } from "@lore/proxy";
-import { deterministicEmbed, EMBEDDING_DIM, HASH_DIM, HASH_MODEL, vectorToPgText, zeroPad } from "@lore/core";
+import { createAnthropicAdapter, createOpenAIAdapter } from "@lore/proxy";
 import { LOCALE_NAMES, isLocale, resolveLocale } from "@lore/core";
+import { loadSelfFacts, selectContext, USER_SUBJECT } from "../retrieval.js";
 
 /**
  * In-app chat — retrieves the caller's org memories by cosine similarity over
@@ -77,12 +73,12 @@ export interface ChatImage {
 /**
  * Questions that expect to be answered with a picture.
  *
+ * The pattern lives in `../retrieval.js`, beside the selection it changes, so
+ * the inspector and the answer agree on what counts as an image question.
  * Matching on the words people use to ask for an image keeps the behaviour
  * predictable: "show me the portfolio" brings it up, "who is Chen Lian" does
  * not, and no threshold on a distance score has to be invented for it.
  */
-const WANTS_IMAGE =
-  /\b(image|images|picture|pictures|photo|photos|screenshot|screenshots|scan|scans|visual|portfolio|design|drawing|diagram|look like|show)\b/i;
 
 /**
  * Durable memory.
@@ -99,9 +95,6 @@ const WANTS_IMAGE =
  * Both are deterministic — they do not depend on a document chunk winning a
  * cosine ranking against a screenplay or a pile of image descriptions.
  */
-
-/** Subject under which self-stated facts are filed. */
-const USER_SUBJECT = "the user";
 
 /**
  * Patterns worth capturing, and the predicate each becomes.
@@ -178,27 +171,6 @@ async function rememberSelfFacts(
   }
 }
 
-/** Every durable fact this reader has stated, newest first. */
-async function loadSelfFacts(
-  db: Db,
-  orgId: string,
-  userId: string,
-): Promise<Array<{ predicate: string; object: string }>> {
-  return db
-    .select({ predicate: assertions.predicate, object: assertions.object })
-    .from(assertions)
-    .where(
-      and(
-        eq(assertions.orgId, orgId),
-        eq(assertions.ownerUserId, userId),
-        eq(assertions.subject, USER_SUBJECT),
-        inArray(assertions.status, ["proposed", "confirmed"]),
-      ),
-    )
-    .orderBy(desc(assertions.createdAt))
-    .limit(24);
-}
-
 /** Turns from this reader's other conversations that look related. */
 async function loadEarlierTurns(
   db: Db,
@@ -219,28 +191,6 @@ async function loadEarlierTurns(
     )
     .orderBy(sql`similarity(${chatMessages.content}, ${input.question}) DESC`)
     .limit(4);
-}
-
-/** Embed the question in the stored chunks' vector space. */
-async function queryVectorFor(
-  key: RevealedKey | null,
-  question: string,
-): Promise<{ vec: Float32Array; model: string }> {
-  if (key && canEmbedKey(key)) {
-    try {
-      const embedded = await createOpenAIEmbedder({ apiKey: key.apiKey, baseUrl: key.baseUrl }).embed(
-        question,
-        key.embedModel,
-      );
-      const first = embedded[0];
-      if (first) return { vec: first, model: key.embedModel };
-    } catch {
-      // An embedder that is down or misconfigured must not take the whole
-      // answer with it: retrieval falls back to the local space, the reply is
-      // still produced, and the images/provenance paths stay intact.
-    }
-  }
-  return { vec: deterministicEmbed(question, HASH_DIM), model: HASH_MODEL };
 }
 
 export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
@@ -291,7 +241,6 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
         // states about the reader, then load every fact they have ever stated
         // plus the earlier turns that look related to this question.
         await rememberSelfFacts(db, { orgId: user.orgId, userId: user.id, chatId, text: question });
-        const facts = await loadSelfFacts(db, user.orgId, user.id);
         const earlier = await loadEarlierTurns(db, {
           orgId: user.orgId,
           userId: user.id,
@@ -299,55 +248,21 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
           question,
         });
 
-        const storedModel = await dominantEmbeddingModel(db, user.orgId);
-        const { vec: queryVector, model } = await queryVectorFor(
-          pickEmbedKey(keys, storedModel),
+        // Retrieval is shared with the read-only inspector, so an answer and the
+        // explanation of that answer can never disagree.
+        const context = await selectContext(db, {
+          orgId: user.orgId,
+          userId: user.id,
           question,
-        );
-        const queryText = vectorToPgText(zeroPad(queryVector, EMBEDDING_DIM));
-
-        // Whether the question is about pictures. Decided before retrieval
-        // because it changes what counts as relevant: "what is my name" must not
-        // be answered with a character sheet.
-        const askedForImage = WANTS_IMAGE.test(question);
-
-        const candidates = await withRls(db, user.orgId, user.id, async (tx) =>
-          tx
-            .select({ text: chunks.text, documentId: chunks.documentId })
-            .from(embeddings)
-            .innerJoin(chunks, eq(chunks.id, embeddings.entityId))
-            .innerJoin(documents, eq(documents.id, chunks.documentId))
-            .where(
-              and(
-                eq(embeddings.entityType, "chunk"),
-                eq(embeddings.model, model),
-                eq(chunks.orgId, user.orgId),
-                // A picture's description is only prose worth reading when the
-                // question is about pictures; otherwise it crowds out text.
-                askedForImage ? undefined : sql`${documents.mime} NOT LIKE 'image/%'`,
-              ),
-            )
-            .orderBy(sql`${embeddings.vec} <=> ${queryText}::vector`)
-            .limit(24),
-        );
-
-        /*
-         * At most two passages per document.
-         *
-         * A single verbose document — a 32-chunk screenplay, or a pile of image
-         * descriptions — otherwise fills every slot, so a one-line note that
-         * says who the reader is never reaches the model even when it is the
-         * best match in the database.
-         */
-        const perDocument = new Map<string, number>();
-        const rows: typeof candidates = [];
-        for (const row of candidates) {
-          const taken = perDocument.get(row.documentId) ?? 0;
-          if (taken >= 2) continue;
-          perDocument.set(row.documentId, taken + 1);
-          rows.push(row);
-          if (rows.length >= 6) break;
-        }
+          keys,
+        });
+        const {
+          model,
+          queryText,
+          askedForImage,
+          selected: rows,
+          facts,
+        } = context;
 
         // Images the retrieved passages came from, but only when the question
         // was about pictures: an answer to "what is my name" that arrives with

@@ -79,6 +79,7 @@ what must stay true; "Proof" is the test that fails if it stops being true.
 | `encryption-at-rest` | Key material and stored secrets need the configured key present to be written, and an immutable key per installation | `apps/api/src/routes/m2.test.ts` |
 | `chunking` | Text is chunked with overlap and a hard cut, so an oversized run never produces an oversized chunk | `packages/core/src/chunking.test.ts` |
 | `stalled-extraction-recovery` | A document a dead worker left in `extracting` is found and closed out with a reason, without ever failing a document another worker is still reading | `packages/db/src/documents-reaper.test.ts`, `apps/worker/src/index.test.ts` |
+| `retrieval-inspector` | `GET /recall/context` shows the passages an answer would be built from — the same selection `/chat` makes — and creates no conversation, message or fact | `apps/api/src/routes/m11.test.ts` |
 
 ## How to change a locked feature
 

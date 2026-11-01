@@ -119,6 +119,33 @@ services:
         limits:
           memory: 256M
 
+  # Public access — off until a tunnel exists.
+  #
+  # Behind a profile on purpose: `docker compose up -d` must keep working on a
+  # LAN-only box, and a half-configured tunnel that keeps restarting is worse
+  # than no tunnel. Bring it up with:
+  #
+  #   docker compose --env-file .env -f deploy/compose/docker-compose.yml \
+  #     --profile tunnel up -d cloudflared
+  #
+  # It talks to Caddy over HTTPS with an origin certificate it does not verify,
+  # because Caddy signs with its own internal CA — the tunnel is the trust edge,
+  # not the origin. See docs/TUNNEL.md.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      caddy:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
 volumes:
   caddy_data:
   caddy_config:

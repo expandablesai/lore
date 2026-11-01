@@ -249,6 +249,48 @@ else
   note "node is not installed on this host — lock check skipped (run it in CI)"
 fi
 
+# ── public access (phase D's last item) ──────────────────────────────────────
+section "public access"
+PUBLIC_HOST=${PUBLIC_HOST:-lore.dushyant.com}
+
+# Ask a public resolver, not this box's: a LAN router can hold an override for a
+# name that does not exist publicly at all, which is exactly how "the DNS is
+# done" looked from inside the network while the internet had never heard of it.
+dns_out=$("${COMPOSE[@]}" exec -T caddy nslookup "$PUBLIC_HOST" 1.1.1.1 2>&1 || true)
+local_ip=$(getent hosts "$PUBLIC_HOST" 2>/dev/null | awk '{print $1}' | head -1)
+
+if printf '%s' "$dns_out" | grep -qiE "can't find|NXDOMAIN|SERVFAIL"; then
+  warn "$PUBLIC_HOST has no public DNS record — it does not exist outside this network (docs/TUNNEL.md)"
+else
+  public_ip=$(printf '%s\n' "$dns_out" | awk '/^Address: /{print $2}' | grep -v '^1\.1\.1\.1$' | tail -1)
+  if [ -z "$public_ip" ]; then
+    warn "$PUBLIC_HOST did not resolve at the public resolver"
+  elif printf '%s' "$public_ip" | grep -qE '^(10\.|127\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)'; then
+    warn "$PUBLIC_HOST resolves publicly to $public_ip (a private address) — LAN only"
+  else
+    ok "$PUBLIC_HOST resolves publicly to $public_ip"
+  fi
+fi
+
+if [ -n "$local_ip" ]; then
+  note "this network's resolver answers $local_ip — a local override, not public DNS"
+fi
+
+connector=$("${COMPOSE[@]}" ps -a --format '{{.Service}} {{.State}}' 2>/dev/null |
+  awk '$1 == "cloudflared" {print $2}')
+case "$connector" in
+  running) ok "the cloudflared connector is running" ;;
+  "") note "no cloudflared connector — the tunnel profile is not in use" ;;
+  *) warn "the cloudflared connector is $connector" ;;
+esac
+
+public_code=$(curl -s -o /dev/null -m 8 -w '%{http_code}' "https://$PUBLIC_HOST/" 2>/dev/null)
+case "$public_code" in
+  200|301|302|303|307|308) ok "https://$PUBLIC_HOST answers $public_code" ;;
+  000) note "https://$PUBLIC_HOST did not answer from here — there is no public path yet" ;;
+  *) warn "https://$PUBLIC_HOST answered $public_code" ;;
+esac
+
 # ── the verdict ──────────────────────────────────────────────────────────────
 printf '\n%d passed, %d warning(s), %d failed\n' "$PASS" "$WARN" "$FAIL"
 if [ "$FAIL" -gt 0 ]; then

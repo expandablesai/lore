@@ -33,6 +33,74 @@ docker compose --env-file .env -f deploy/compose/docker-compose.yml \
 public resolver rather than the box's own — the LAN override is exactly what made
 this look finished from the inside.
 
+## The card wall, and three ways past it
+
+The Zero Trust **dashboard** asks some accounts for a payment method before it
+will let you create anything, even though tunnels themselves are free. That
+prompt is a property of the Zero Trust *product page*, not of tunnels. None of
+the routes below opens that page, and one of them needs no account at all.
+
+| Route | Account needed | Hostname | Durable | Evidence |
+| --- | --- | --- | --- | --- |
+| 1. Quick tunnel — `scripts/ops/tunnel-quick.sh` | none | random `*.trycloudflare.com` | no | **verified on this installation** |
+| 2. Named tunnel from `cert.pem` — `scripts/ops/tunnel-local.sh` | Cloudflare login in a browser, no plan | `lore.dushyant.com` | yes | script written, needs the cert |
+| 3. Named tunnel from an API token — Route B below | API token (created without a card) | `lore.dushyant.com` | yes | may still hit a billing gate; unverified |
+
+**Route 1 was run against this box and it works end to end.** `cloudflared tunnel
+--url https://localhost:443 --http-host-header lore.dushyant.com
+--origin-server-name lore.dushyant.com --no-tls-verify` produced
+`https://science-tuner-streaming-measure.trycloudflare.com`, and from outside the
+LAN:
+
+```
+GET /                  -> 302  Location: https://auth.dushyant.com/?rd=https%3A%2F%2Flore.dushyant.com%2Findex.html
+GET /api/v1/healthz    -> 401
+```
+
+That is Caddy and Authelia answering a request that began on the public internet,
+with no Cloudflare account involved — the edge is finished; only the *durable
+name* was missing. (The URL is random and dies with the process, so it is a
+smoke test, not a deployment.)
+
+**Route 2 is the durable, no-card, no-dashboard answer.** `cloudflared tunnel
+login` is an account-level browser authorization, not Zero Trust: it writes
+`cert.pem`, and a tunnel created from that is configured by a local file instead
+of by the dashboard. The one wrinkle is that the browser callback must reach the
+machine running the command, so do it where the browser is:
+
+```powershell
+winget install Cloudflare.cloudflared
+cloudflared tunnel login          # browser opens; pick dushyant.com
+# copies %USERPROFILE%\.cloudflared\cert.pem
+```
+
+then copy that single file to `/root/.cloudflared/cert.pem` on the VM and run:
+
+```bash
+./scripts/ops/tunnel-local.sh     # creates/updates the tunnel, routes DNS, writes
+                                  # deploy/compose/cloudflared/config.yml, starts the connector
+```
+
+**Route 3** — if an API token already exists with *Account: Cloudflare Tunnel:
+Edit* and *Zone: DNS: Edit*, Route B's commands do the same thing directly. A
+token can be created without a card; whether the create call also escapes the
+billing gate is the one thing I could not test without one.
+
+**Fallback if all three are refused:** Tailscale Funnel. Free, no card, a stable
+`https://<machine>.<tailnet>.ts.net` name — but no custom domain, and it needs a
+Tailscale account and auth key:
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+tailscale up                     # browser login or --authkey
+tailscale funnel --bg 443        # then enable Funnel + HTTPS in the admin console
+```
+
+That trades `lore.dushyant.com` for a working public URL, which is the honest
+trade to make if the domain has to wait.
+
+
+
 ## What "done" looks like
 
 From a network that is **not** the laboratory LAN:
@@ -47,9 +115,9 @@ curl -s -o /dev/null -w '%{http_code}\n' \
 and the doctor's **public access** section reporting a public address and a
 running connector.
 
-## Route A — the dashboard (no API token needed)
+## Route A — the dashboard (this is the route that asks for a card)
 
-This is the route that does not depend on an API token scope.
+Use it only if your account gets past the payment prompt; Routes 1 and 2 avoid it.
 
 1. **Create the tunnel**: Cloudflare dashboard → Zero Trust → Networks → Tunnels
    → *Create a tunnel* → Cloudflared → name it `lore` → copy the token from the

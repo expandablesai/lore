@@ -146,6 +146,28 @@ services:
         limits:
           memory: 256M
 
+  # The same connector, driven by a local config file instead of a token.
+  #
+  # This is the route that never touches the Zero Trust dashboard: `cloudflared
+  # tunnel login` (browser, account-level, no plan) writes cert.pem, and
+  # scripts/ops/tunnel-local.sh turns it into a named tunnel for the real
+  # hostnames. Start this one *or* the token one, never both — two connectors on
+  # one tunnel is legal but confusing to debug.
+  cloudflared-local:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "--config", "/etc/cloudflared/config.yml", "run"]
+    volumes:
+      - ./cloudflared:/etc/cloudflared:ro
+    depends_on:
+      caddy:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
 volumes:
   caddy_data:
   caddy_config:

@@ -63,11 +63,10 @@ if [ "${SWEEP:-0}" = "1" ]; then
   echo
   printf '%-14s %-38s %s\n' "perDocument" "rank (hit@1 / MRR)" "evidence diversity"
   for per_doc in 1 2 3 4 6 8; do
-    line=$(SWEEP=0 SUMMARY_ONLY=1 PER_DOC="$per_doc" bash "$0" 2>/dev/null |
-      grep -E '^(naive|compiled|diversity)' | tr '\n' '|')
-    ranks=$(printf '%s' "$line" | tr '|' '\n' | grep '^compiled' | sed 's/^compiled *//')
-    div=$(printf '%s' "$line" | tr '|' '\n' | grep '^diversity' | sed 's/^diversity *//')
-    printf '%-14s %-38s %s\n' "$per_doc" "$ranks" "$div"
+    out=$(SWEEP=0 SUMMARY_ONLY=1 PER_DOC="$per_doc" bash "$0" 2>/dev/null)
+    ranks=$(printf '%s\n' "$out" | grep -E '^compiled +hit@1' | sed -E 's/^compiled +//')
+    div=$(printf '%s\n' "$out" | grep -E '^diversity:' | sed -E 's/^diversity: //')
+    printf '%-14s %-52s %s\n' "$per_doc" "${ranks:-no result}" "${div:-no result}"
   done
   exit 0
 fi
@@ -77,7 +76,7 @@ echo
 
 GOLDEN_TEXT=$(grep -vE '^\s*(#|$)' "$GOLDEN") TOKEN="$TOKEN" \
   "${COMPOSE[@]}" exec -T \
-    -e GOLDEN_TEXT -e TOKEN app node - <<'JS'
+    -e GOLDEN_TEXT -e TOKEN -e SUMMARY_ONLY -e PER_DOC -e LIMIT -e CAND app node - <<'JS'
 const base = "http://127.0.0.1:3001";
 const token = process.env.TOKEN;
 const summaryOnly = process.env.SUMMARY_ONLY === "1";

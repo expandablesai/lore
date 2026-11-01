@@ -485,3 +485,37 @@ Read honestly, that says three things:
 The benchmark is a fixture, not a one-off: the labels are hand-written, so a
 "miss" is a fact about the label as much as about retrieval, and the script says
 so. What it can do from now on is notice when a change moves those numbers.
+
+## 15. The per-document cap, swept
+
+`/recall/context` accepts optional `limit`, `perDocument` and `candidates`
+overrides (bounded, 400 otherwise); `/chat` never passes them. That turns the
+constant into something measurable instead of something argued about.
+`SWEEP=1 scripts/ops/bench-recall.sh` re-scores the same golden set at each value:
+
+| `PASSAGES_PER_DOCUMENT` | hit@1 | MRR | distinct documents among the 6 passages |
+| --- | --- | --- | --- |
+| 1 | 11/12 | 0.958 | **5.1** |
+| **2 (shipped)** | 11/12 | 0.958 | 3.5 |
+| 3 | 11/12 | 0.958 | 2.9 |
+| 4 | 11/12 | 0.958 | 2.8 |
+| 6 | 11/12 | 0.958 | 2.7 (identical to naive, as expected) |
+| 8 | 11/12 | 0.958 | 2.7 |
+
+Two facts and one honest limit:
+
+1. **Rank is invariant to the cap.** Where the expected document lands does not
+   move at any value. The cap is not a dial for "finding the right document".
+2. **Diversity is monotonic in the cap.** Cap 1 fits six passages from five
+   different documents into the same six slots; cap 6 degenerates exactly to the
+   naive top-6, which is the check that the override is doing what it says.
+3. **These labels cannot choose between 1 and 2.** They are document-level: they
+   say which *file* should answer, not which *passage*. Cap 1 maximises breadth by
+   halving depth, and a question whose answer spans two adjacent chunks of one
+   document would pay for that — invisible to this golden set.
+
+So the shipped value stays at 2, and that is a decision on evidence rather than
+on taste: the data justifies "not 6", not "1 instead of 2". Changing it would need
+passage-level labels (a third column naming a phrase the answering chunk must
+contain), which is the next measurement to build if this constant ever matters
+enough to argue about.

@@ -433,3 +433,55 @@ files; a restore drill into a throwaway `lore_restore` database reproduced the
 manifest exactly (20 documents, 78 chunks, 79 embeddings, 16 users, 17 keys).
 The doctor's first run found a real orphan vector and an over-broad model check;
 both were fixed (`repair.sh --apply`, and the check now compares models per org).
+
+## 14. M4: the context compiler, measured
+
+The plan asked for a context compiler benchmarked against naive top-k. The
+benchmark needs to see the selection, and the selection only existed inside the
+`/chat` handler — so there were two honest options: measure a copy of the
+ranking, or expose the real one. The owner chose to expose it.
+
+**What changed.** Retrieval moved to `apps/api/src/retrieval.ts` —
+`buildQueryVector`, `rankCandidates` (24 by cosine, pictures only when the
+question is about pictures), `applyPassageCap` (at most 2 passages per document
+until 6) and `selectContext`, which composes them with the reader's own facts.
+`/chat` calls it, so there is one selection algorithm rather than two that can
+drift.
+
+**`GET /recall/context?q=`** returns three views of the same query: `selected`
+(what the model receives), `naive` (the flat top-6, no per-document cap) and
+`candidates` (everything the ranking offered, with distance and a 160-character
+excerpt). It is read-only — no chat, no message, no fact — which `m11` asserts by
+counting rows before and after.
+
+**The measurement.** `scripts/ops/bench-recall.sh` scores a hand-labelled golden
+set (`scripts/ops/golden-questions.tsv`, 12 questions) through that endpoint, using
+the `nomic-embed-text` space the org is actually indexed in:
+
+```
+naive      hit@1 11/12   hit@3 12/12   hit@6 12/12   MRR 0.958
+compiled   hit@1 11/12   hit@3 12/12   hit@6 12/12   MRR 0.958
+
+evidence diversity — distinct documents among the six passages:
+  naive 2.7, compiled 3.5 (of 6 possible)
+the per-document cap dropped 220 passage(s) across the golden set
+```
+
+Read honestly, that says three things:
+
+1. **The cap costs nothing on rank.** The expected document lands in the same
+   place with and without it, including the single `#2` (a password question
+   answered by both the record and the runbook).
+2. **The cap buys evidence diversity.** Of the six passages sent, the flat top-6
+   draws from 2.7 distinct documents on average; the compiled selection draws
+   from 3.5 — roughly 30% more sources for the same six slots, because the cap
+   stops one long document from filling them.
+3. **It is not free.** 18–22 of the 24 candidates are discarded per question. On
+   this corpus nothing important was discarded; on a corpus where the *answer* is
+   the fourth passage of one document, it would be, which is why the cap is a
+   number in one place (`PASSAGES_PER_DOCUMENT`) rather than a rule spread
+   through the query.
+
+The benchmark is a fixture, not a one-off: the labels are hand-written, so a
+"miss" is a fact about the label as much as about retrieval, and the script says
+so. What it can do from now on is notice when a change moves those numbers.

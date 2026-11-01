@@ -35,9 +35,12 @@ DB_USER=$("${COMPOSE[@]}" exec -T db sh -lc 'echo $POSTGRES_USER' | tr -d '\r')
 DB_NAME=${DB_NAME:-lore}
 DB_USER=${DB_USER:-lore}
 
-USER_ID=$("${COMPOSE[@]}" exec -T db psql -U "$DB_USER" -d "$DB_NAME" -tAc \
-  "select id from users order by created_at limit 1" | tr -d '\r')
-[ -n "$USER_ID" ] || { echo "no users in $DB_NAME — nothing to benchmark" >&2; exit 2; }
+# The user whose documents these are: the endpoint works in the caller's org and
+# a session for the wrong person silently benchmarks an empty workspace.
+USER_ID=${USER_ID:-$("${COMPOSE[@]}" exec -T db psql -U "$DB_USER" -d "$DB_NAME" -tAc \
+  "select uploaded_by from documents where uploaded_by is not null
+    group by uploaded_by order by count(*) desc limit 1" | tr -d '\r')}
+[ -n "$USER_ID" ] || { echo "no documents in $DB_NAME — nothing to benchmark" >&2; exit 2; }
 
 # A read-only endpoint still needs a session. Mint one, use it, revoke it; the
 # token is never printed and never stored outside this process.
@@ -65,6 +68,9 @@ const metric = (rows, doc) => {
   return index < 0 ? null : index + 1;
 };
 
+/** How many distinct documents the six passages come from. */
+const spread = (rows) => new Set((rows || []).map((row) => row.filename)).size;
+
 const pad = (text, width) => String(text).padEnd(width).slice(0, width);
 const rank = (value) => (value === null ? "miss" : `#${value}`);
 
@@ -90,14 +96,20 @@ const rank = (value) => (value === null ? "miss" : `#${value}`);
       naive: metric(body.naive, doc),
       compiled: metric(body.selected, doc),
       candidates: body.candidateCount,
+      dropped: (body.dropped || []).length,
+      naiveDocs: spread(body.naive),
+      compiledDocs: spread(body.selected),
     });
   }
 
-  console.log(`${pad("question", 58)} ${pad("expected", 26)} naive  compiled`);
-  console.log("-".repeat(58 + 1 + 26 + 1 + 6 + 1 + 9));
+  console.log(`${pad("question", 46)} ${pad("expected", 22)} cand drop  docs  naive compiled`);
+  console.log("-".repeat(46 + 1 + 22 + 1 + 4 + 1 + 4 + 1 + 5 + 1 + 6 + 1 + 9));
   for (const r of results) {
-    const flag = r.compiled === r.naive ? " " : r.compiled !== null && (r.naive === null || r.compiled < r.naive) ? "+" : "-";
-    console.log(`${pad(r.question, 58)} ${pad(r.doc, 26)} ${pad(rank(r.naive), 6)} ${pad(rank(r.compiled), 9)} ${flag}`);
+    const flag = r.compiled === r.naive ? "" : r.compiled !== null && (r.naive === null || r.compiled < r.naive) ? " +" : " -";
+    console.log(
+      `${pad(r.question, 46)} ${pad(r.doc, 22)} ${pad(r.candidates, 4)} ${pad(r.dropped, 4)} ${pad(`${r.naiveDocs}/${r.compiledDocs}`, 5)} ` +
+        `${pad(rank(r.naive), 6)} ${pad(rank(r.compiled), 9)}${flag}`,
+    );
   }
 
   const summarise = (key, label) => {
@@ -115,8 +127,20 @@ const rank = (value) => (value === null ? "miss" : `#${value}`);
 
   const better = results.filter((r) => r.compiled !== null && (r.naive === null || r.compiled < r.naive)).length;
   const worse = results.filter((r) => r.compiled === null || (r.naive !== null && r.compiled > r.naive)).length;
+  const dropped = results.reduce((sum, r) => sum + r.dropped, 0);
+  const avg = (key) => (results.reduce((sum, r) => sum + r[key], 0) / (results.length || 1)).toFixed(1);
   console.log();
+  console.log(
+    `evidence diversity — distinct documents among the six passages: naive ${avg("naiveDocs")}, compiled ${avg("compiledDocs")} (of 6 possible)`,
+  );
   console.log(`compiled ranks the expected document better on ${better} question(s), worse on ${worse}.`);
+  if (dropped === 0) {
+    console.log("the per-document cap dropped nothing — no document here crowds the top-6 out.");
+  } else {
+    console.log(
+      `the per-document cap dropped ${dropped} passage(s) across the golden set; the diversity line above is what that buys.`,
+    );
+  }
   const models = [...new Set(results.map((r) => r.model))];
   console.log(`embedding model(s) used: ${models.join(", ") || "(none)"}`);
 })();

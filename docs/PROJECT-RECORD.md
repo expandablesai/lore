@@ -600,6 +600,17 @@ Two honest limits of this documentation:
   matches its promises.
 
 On 2026-11-08 the engineering memory bank (Hindsight) was also given six companion
-reference documents — system reference, edge/public access, operations runbook, the
-lock, the retrieval benchmark, and the API surface — plus an explicit correction of
-the older status notes it held.
+reference documents — plus an explicit correction of the older status notes it held:
+
+| Memory-bank document | Covers |
+| --- | --- |
+| `EXPANDABLES LORE — system reference v1.0 (2026-11-08)` | the whole system: stack, data model, request path, ingestion, retrieval, providers, console, deployment, verification, live state, lessons |
+| `EXPANDABLES LORE — public access: Cloudflare Tunnel, Authelia edge …` | topology, verification commands, the four traps, fallback routes, rollback, open token/LAN items |
+| `EXPANDABLES LORE — operations runbook …` | doctor's 29 checks, backup/restore/repair semantics, deploy, failure playbook |
+| `EXPANDABLES LORE — the lock: frozen design system and feature surface …` | what is hashed, the 44/12/12/34 counts, the changelog, how to change it legitimately |
+| `EXPANDABLES LORE — retrieval compiler and benchmark …` | the selector, golden set, naive-vs-compiled results, the cap sweep and why 2 ships |
+| `EXPANDABLES LORE — HTTP API surface (44 routes)` | every route by domain, auth, calling conventions |
+| `Correction: EXPANDABLES LORE status — stale claims superseded 2026-11-08` | claim-by-claim correction of older notes (public DNS gap, 251/207 tests, 24 routes, M4 unbuilt, …) |
+
+The memory bank is a searchable summary, not a second source of truth: where it and
+this repository disagree, the repository wins.

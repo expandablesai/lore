@@ -1,37 +1,41 @@
 # Public access: the Cloudflare Tunnel
 
-The last unfinished piece of phase D. Everything else about the deployment is
-done and verified; this document is the whole remaining gap, written so the last
-step is one credential and one command.
+**Status: live since 2026-11-08.** `lore.dushyant.com` and `auth.dushyant.com`
+are served through the tunnel `expandables-lore-prod`
+(`be67f848-f6b7-4f50-8cac-dbc1b1481092`), verified through the Cloudflare edge
+(`302` to Authelia, `401` on `/api/v1/healthz`, `200` on the portal), with the
+doctor reporting `29 passed, 0 warnings, 0 failed`.
 
-## Where it stands (measured, not remembered)
+What follows is how it was built and what it cost to get right — kept because the
+next deployment will meet the same four traps.
 
-`lore.dushyant.com` and `auth.dushyant.com` are resolved **inside this network
-only**. Two separate facts, and the difference matters:
+## Where it stood before the cutover (measured, not remembered)
 
-- From the **LAN**, both names answer with the VM's private address
+- From the **LAN**, both names answered with the VM's private address
   (`10.20.10.52`) — the router at `10.20.10.1` holds a local override.
-- From the **public internet**, both names do not exist: `1.1.1.1` and `8.8.8.8`
-  both answer NXDOMAIN. There is no public DNS record, and therefore no public
-  path.
+- From the **public internet**, both names did not exist: `1.1.1.1` and `8.8.8.8`
+  both answered NXDOMAIN. No public record, therefore no public path.
 
-Caddy terminates TLS on the VM with its own internal CA
-(`deploy/compose/Caddyfile`), Authelia sits in front of the app, and documents
-live on the host at `/srv/lore/blobs`. What is missing is the record and the
-connector from the public internet to Caddy.
-
-`cloudflared` is already installed on the VM (`/usr/local/bin/cloudflared`); there
-is no tunnel yet, and no credential on the box. The compose service exists but is
-behind a profile, so it does nothing until a tunnel is configured:
+The LAN override is the reason "it works here" was never evidence. `doctor.sh`
+now asks a public resolver on purpose, and the public path must be tested with
+the edge pinned:
 
 ```bash
-docker compose --env-file .env -f deploy/compose/docker-compose.yml \
-  --profile tunnel up -d cloudflared
+curl --resolve lore.dushyant.com:443:188.114.96.5 https://lore.dushyant.com/
 ```
 
-`./scripts/ops/doctor.sh` reports all of this under **public access**, and asks a
-public resolver rather than the box's own — the LAN override is exactly what made
-this look finished from the inside.
+## What a working connector needs
+
+- `cloudflared` in compose behind `--profile tunnel`, with
+  `CLOUDFLARE_TUNNEL_TOKEN` in `.env` (600, root-owned).
+- Both public hostnames → `https://caddy:443` (the compose service name, because
+  the connector joins the same network), **No TLS Verify**, and
+  **Origin Server Name = the hostname itself** — Caddy selects the site by SNI
+  and holds a per-hostname internal certificate.
+- Routes match **top to bottom**, and the "Add route" dialog keeps the previous
+  subdomain, which is how `lore` once ended up with no route (404) while `auth`
+  appeared twice.
+
 
 ## The card wall, and three ways past it
 

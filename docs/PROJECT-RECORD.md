@@ -267,8 +267,8 @@ d3fde22 retry a silent provider once, and name the model that went quiet
 ## 7. Known gaps / next steps
 
 - **Public DNS + Cloudflare Tunnel** for `lore.dushyant.com` / `auth.dushyant.com`
-  — the last unbuilt piece of phase D; tunnel creation needs dashboard OAuth,
-  which an API token cannot do.
+  — **done on 2026-11-08**, see §16. The card wall that appeared to block it was a
+  Zero Trust *dashboard* prompt, not a tunnel requirement.
 - **Image generation** is explicitly out of scope (the model is told it cannot
   draw); it would need a separate image-model provider.
 - The configured chat gateway (`qwen3.8-flash-next-unsloth-ud-q4-kxl`) returns an
@@ -519,3 +519,52 @@ on taste: the data justifies "not 6", not "1 instead of 2". Changing it would ne
 passage-level labels (a third column naming a phrase the answering chunk must
 contain), which is the next measurement to build if this constant ever matters
 enough to argue about.
+
+## 16. Public access: finished (2026-11-08)
+
+The last line of phase D. Final state:
+
+| Piece | Value |
+| --- | --- |
+| Tunnel | `expandables-lore-prod`, UUID `be67f848-f6b7-4f50-8cac-dbc1b1481092`, account `ffe48f1d…` |
+| Management | Remotely managed; connector runs in compose as `lore-cloudflared-1` behind `--profile tunnel` (`restart: unless-stopped`) |
+| Credential | `CLOUDFLARE_TUNNEL_TOKEN` in `/opt/lore/.env` (one line, `600 root:root`, never echoed) |
+| Hostnames | `lore.dushyant.com` and `auth.dushyant.com` → `https://caddy:443`, *No TLS Verify*, Origin Server Name = the hostname itself |
+| DNS | Proxied `CNAME` → `be67f848-….cfargotunnel.com` (created by Cloudflare) |
+
+Verified **through the Cloudflare edge**, not through the LAN:
+
+```
+lore /                302 ×6   (Location: https://auth.dushyant.com/?rd=…)
+lore /index.html      302
+lore /api/v1/healthz  401 ×6   (Authelia forward_auth, as designed)
+auth /                200 ×3   (Authelia portal)
+doctor                29 passed, 0 warnings, 0 failed
+```
+
+### Four mistakes worth keeping
+
+1. **The card wall was a dashboard artifact.** Zero Trust onboarding asks some
+   accounts for a payment method; creating and running a tunnel never needed it. A
+   quick tunnel with *no account at all* returned 302/401 through the public
+   internet, which is what proved the edge was already finished.
+2. **A LAN resolver override hid the truth.** The router answers
+   `lore.dushyant.com → 10.20.10.52`, so a browser or `curl` on the LAN talks to
+   Caddy directly and reports success while the public path is broken. Every claim
+   about a public hostname has to force the edge:
+   `curl --resolve lore.dushyant.com:443:188.114.96.5 …`.
+3. **`Origin Server Name` is mandatory.** Caddy selects the site by SNI and its
+   internal CA holds a per-hostname certificate; without it the connector logs
+   `Unable to reach the origin service … tls: internal error` and Cloudflare
+   answers 502.
+4. **Routes are matched top-down and the dialog remembers.** A hostname added
+   before its TLS settings kept defaults, and adding the second hostname from the
+   same dialog duplicated the previous subdomain — `lore` ended up with *no* route
+   and answered 404 while `auth` appeared twice.
+
+### One open nuance
+
+The router's local override is still in place, so LAN clients bypass the tunnel
+entirely and see Caddy's internal certificate. Convenient, but it means "works on
+my laptop" and "works on the internet" are two different paths until the override
+is removed or pointed somewhere deliberate.

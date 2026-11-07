@@ -433,6 +433,12 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
           // answerable. The durable profile stays in — dropping it would make a
           // question about the reader unanswerable on the retry alone.
           try {
+            // The retry keeps a clipped slice of the retrieved passages. Dropping
+            // them entirely produced an answer that read as if the documents had
+            // never been uploaded — the reader cannot tell an ungrounded retry
+            // from a broken memory, so grounding is the one thing the retry may
+            // not lose.
+            const shortMemory = memory.slice(0, 1500);
             const retry = await adapter.chatCompletions({
               model: chatKey.chatModel,
               max_tokens: 512,
@@ -442,7 +448,10 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
                   content: [
                     `Answer in ${answerLanguage}.`,
                     profileBlock,
-                    "Answer the user's question directly, in a few sentences.",
+                    shortMemory === ""
+                      ? ""
+                      : `Passages retrieved from the workspace's documents:\n${shortMemory}`,
+                    "Answer the user's question directly, in a few sentences, using the passages above when they contain the answer.",
                   ]
                     .filter((line) => line !== "")
                     .join("\n"),

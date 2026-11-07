@@ -102,15 +102,25 @@ export const createMemoryRoutes: (db: Db) => FastifyPluginAsync = (db) => async 
       });
     }
 
+    // Overrides are for measuring. With none supplied this is exactly what /chat
+    // does, including whole-document expansion; passing an empty override object
+    // here would silently opt the inspector out of that behaviour.
+    const overrides =
+      request.query.limit !== undefined ||
+      request.query.perDocument !== undefined ||
+      request.query.candidates !== undefined
+        ? {
+            limit: limits.limit,
+            perDocument: limits.perDocument,
+            candidates: limits.candidates,
+          }
+        : undefined;
+
     const context = await selectContext(db, {
       orgId: user.orgId,
       userId: user.id,
       question,
-      limits: {
-        limit: limits.limit,
-        perDocument: limits.perDocument,
-        candidates: limits.candidates,
-      },
+      limits: overrides,
     });
 
     const describe = (row: (typeof context.candidates)[number], rank: number) => ({

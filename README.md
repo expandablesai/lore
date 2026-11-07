@@ -2,8 +2,11 @@
 
 **Product:** `EXPANDABLES LORE` — the memory vault your AI tools share.
 **Umbrella:** `EXPANDABLES OS` (platform/company), `EXPANDABLES` (registered trademark).
-**Status:** Planning. No application code yet. Design is frozen enough to build against.
-**Date:** 2026-10-29
+**Status:** **Shipped and live** (v1, 2026-11-08) at <https://lore.dushyant.com>.
+The dossiers below are the original plan; the current system, its operations and
+the frozen design are in `docs/PROJECT-RECORD.md`, `docs/OPERATIONS.md`,
+`docs/TUNNEL.md`, `docs/LOCKED-DESIGN.md` and `docs/LOCKED-FEATURES.md`.
+**Date:** 2026-10-29 (dossier) · system last verified 2026-11-08
 
 ---
 
@@ -47,6 +50,11 @@ and supersedes v1 (Go/SQLite). It is the implementation contract.
 
 | Doc | What it answers |
 |---|---|
+| [docs/PROJECT-RECORD.md](docs/PROJECT-RECORD.md) | **The system as built**: brief, plan, everything shipped, the journey, live state, known gaps, operating rules, public access |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md) | How to run it: doctor, backup, restore, repair, deploy, failure playbook |
+| [docs/TUNNEL.md](docs/TUNNEL.md) | Public access: Cloudflare Tunnel topology, all access routes, the four traps, rollback |
+| [docs/LOCKED-DESIGN.md](docs/LOCKED-DESIGN.md) | The frozen design system, token by token, and what counts as a design change |
+| [docs/LOCKED-FEATURES.md](docs/LOCKED-FEATURES.md) | The 34 locked feature promises, each with the test that proves it |
 | [01-problem-research.md](docs/01-problem-research.md) | Evidence-backed pain taxonomy: six failure modes, with citations |
 | [02-competitive-landscape.md](docs/02-competitive-landscape.md) | Who builds this, what they miss, where the white space is |
 | [03-architecture.md](docs/03-architecture.md) | Data model, capture ladder, context compiler, security, sync, deployment |

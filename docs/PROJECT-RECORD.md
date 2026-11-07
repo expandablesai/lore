@@ -4,8 +4,8 @@ The original plan for this system, and everything that has actually been built,
 verified and deployed up to this point. Written to be the single durable record:
 if only one document survives, it should be this one.
 
-Last updated: 2026-10-31 · deployed bundle `index-DLumDUVb.js` · commit `d3fde22`
-· VM `10.20.10.52` (`/opt/lore`) · 207 tests green.
+Last updated: 2026-11-08 · commit `6629f32` · VM `10.20.10.52` (`/opt/lore`)
+· 263 tests green · live at <https://lore.dushyant.com>
 
 This document is itself stored in LORE: it was uploaded to the owner org as
 `PROJECT-RECORD.md` (scope `org`), chunked, embedded with `nomic-embed-text` and
@@ -568,3 +568,38 @@ The router's local override is still in place, so LAN clients bypass the tunnel
 entirely and see Caddy's internal certificate. Convenient, but it means "works on
 my laptop" and "works on the internet" are two different paths until the override
 is removed or pointed somewhere deliberate.
+
+---
+
+## 17. The documentation set (2026-11-08)
+
+This record is the narrative. The rest of the durable set, and what each document
+is for:
+
+| Document | Audience | Contents |
+| --- | --- | --- |
+| `docs/PROJECT-RECORD.md` (this) | anyone joining | brief, plan, everything built, the journey, state, gaps, operating rules, §9–§16 of post-plan work |
+| `docs/OPERATIONS.md` | whoever carries the pager | doctor, backup, restore, repair, deploy, failure playbook |
+| `docs/TUNNEL.md` | whoever exposes it next | tunnel topology, all four access routes, the four traps, rollback |
+| `docs/LOCKED-DESIGN.md` | whoever touches the console | the frozen design, token by token |
+| `docs/LOCKED-FEATURES.md` | whoever touches behaviour | 34 promises, each with the test that proves it |
+| `lore.lock.json` + `scripts/lock.mjs` | CI | the machine copy of the freeze and the checker |
+| `scripts/ops/*.sh` | operators | the four maintenance verbs plus the tunnel and benchmark helpers |
+| `docs/01…10` | historians | the original planning dossier — superseded where it disagrees with this record |
+
+Two honest limits of this documentation:
+
+- **The copies inside LORE are older than this record.** `PROJECT-RECORD.md` was
+  uploaded before §9–§16 existed (18 chunks), and uploading a changed file creates
+  a new document rather than replacing the old one, because the API has no delete
+  route for a document. The repository in `/opt/lore` is canonical; the product's
+  own copies are a demonstration that it can recall its plan, not the source of
+  truth.
+- **The code is the final authority** on behaviour, and `pnpm test` — which runs
+  the lock check first — is the final authority on whether the frozen surface still
+  matches its promises.
+
+On 2026-11-08 the engineering memory bank (Hindsight) was also given six companion
+reference documents — system reference, edge/public access, operations runbook, the
+lock, the retrieval benchmark, and the API surface — plus an explicit correction of
+the older status notes it held.

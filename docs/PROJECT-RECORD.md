@@ -717,3 +717,37 @@ in reading order rather than two of them plus three unrelated files.
 One caveat kept honest: a provider with a genuinely small window (the VM's Ollama is
 started with `num_ctx 4096`) will truncate this prompt. The budget is not a promise
 about any particular key's context; it is a ceiling for the ones configured here.
+
+### The actual cause of the empty answers: thinking mode
+
+Raising the output budget alone did not make the full-document answer appear, and
+probing the strata gateway directly with the real 7.4k-token prompt explained why:
+
+| Request | Wall clock | `reasoning_content` | `content` | `finish_reason` |
+| --- | --- | --- | --- | --- |
+| thinking on, `max_tokens: 4096` | 84 s | 21,963 chars | **0** | `length` |
+| thinking on, `max_tokens: 8192` | 145 s | 43,347 chars | **0** | `length` |
+| thinking off, `max_tokens: 1024` | 28 s | 0 | 4,790 chars | `length` |
+| thinking off, no `max_tokens` | 0.7 s | 0 | 173 chars | `stop` |
+
+qwen3.8 is a reasoning model, and on a large grounded prompt its reasoning spirals
+until the budget is gone, so it finishes with `length` and an **empty `content`** —
+which the product could only report as "returned no answer". `max_tokens` was never
+going to fix that; the thinking pass had to be switched off for that gateway.
+
+- `packages/proxy` accepts `enableThinking` and sends it as
+  `chat_template_kwargs.enable_thinking`, **only when the caller sets it** — a
+  provider that does not understand the field never receives it.
+- `/chat` sets it to `false` for the strata gateway and for `qwen*` models, and
+  raises the first-attempt budget to 4,096 tokens (the adapter's 1,024 default is
+  enough for a chat reply, not for a reasoning pass over documents).
+- The retry stays at 1,024 with grounding kept.
+
+Measured after deploying: "tell me everything about EXPOFLIX" → **4,377 characters
+in 26 s**, grounded in the document; "what is EXPOFLIX?" → 331 characters in 5 s.
+`doctor.sh`: 29 passed, 0 warnings, 0 failed.
+
+This is the recommendation kept: **qwen on the Mac gateway is the workhorse**
+(256K context, now with thinking off for grounded answers), DeepSeek for cloud
+tasks, and the 8B local model is not used for document work — its 4K window and
+quality are the wrong tool for it.

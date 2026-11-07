@@ -12,11 +12,14 @@ next deployment will meet the same four traps.
 ## Where it stood before the cutover (measured, not remembered)
 
 - From the **LAN**, both names answered with the VM's private address
-  (`10.20.10.52`) — the router at `10.20.10.1` holds a local override.
+  (`10.20.10.52`) — because this workstation's hosts file mapped them there
+  (`deploy/setup-lore-edge.ps1`, written when the console was LAN-only). The router
+  was blamed for it at the time; later measurement showed the router answering the
+  public Cloudflare addresses.
 - From the **public internet**, both names did not exist: `1.1.1.1` and `8.8.8.8`
   both answered NXDOMAIN. No public record, therefore no public path.
 
-The LAN override is the reason "it works here" was never evidence. `doctor.sh`
+The hosts mapping is the reason "it works here" was never evidence. `doctor.sh`
 now asks a public resolver on purpose, and the public path must be tested with
 the edge pinned:
 
@@ -139,12 +142,12 @@ Use it only if your account gets past the payment prompt; Routes 1 and 2 avoid i
    not the origin.
 3. **Nothing to delete in Cloudflare** — there is no public record today, so the
    two `CNAME …cfargotunnel.com` records the dashboard creates are the only ones.
-   What *does* need attention is the **LAN override on the router**
-   (`10.20.10.1` → `10.20.10.52`): leave it and LAN clients bypass the tunnel and
-   keep working; remove it and LAN clients go out through Cloudflare like everyone
-   else. Either is defensible, but decide it deliberately — and note that with the
-   override in place, `doctor.sh` will keep reporting a private LAN answer beside
-   the public one.
+   What *does* need attention is any **hosts entry on the workstation** mapping the
+   names to `10.20.10.52`: with it in place the browser talks to Caddy directly,
+   sees the internal certificate and fails with `SSL_ERROR_INTERNAL_ERROR_ALERT`
+   ("Not Secure") while `curl --resolve …` proves the edge is fine.
+   `deploy/setup-lore-edge.ps1` removes such entries by default and offers
+   `-LanDirect` for deliberate origin testing (CA trust included).
 4. **Install the token** in `/opt/lore/.env` as `CLOUDFLARE_TUNNEL_TOKEN=…` (the
    compose service reads it) and start the connector:
 
@@ -193,10 +196,11 @@ hostnames live in `~/.cloudflared/config.yml` pointing at
   same tunnel for that dance to work.
 - **Old `A` records.** See Route A step 3 — the most common way this ends up
   "still not working".
-- **Stale LAN habit.** On the LAN the names will now resolve to Cloudflare's
-  edge and hairpin back through the tunnel. That is fine, but it means the LAN no
-  longer has a direct path that bypasses Authelia; if that matters, add
-  `lore.lan.dushyant.com` with an `A` record to `10.20.10.52` for local use.
+- **Stale LAN habit.** With the hosts entry removed, LAN clients resolve to
+  Cloudflare's edge and hairpin back through the tunnel; the LAN no longer has a
+  direct path that bypasses Authelia. If that matters, add
+  `lore.lan.dushyant.com` with an `A` record to `10.20.10.52`, or run
+  `setup-lore-edge.ps1 -LanDirect` (which also trusts the edge CA).
 
 ## Rollback
 

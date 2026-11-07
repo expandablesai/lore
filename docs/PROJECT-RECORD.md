@@ -548,11 +548,14 @@ doctor                29 passed, 0 warnings, 0 failed
    accounts for a payment method; creating and running a tunnel never needed it. A
    quick tunnel with *no account at all* returned 302/401 through the public
    internet, which is what proved the edge was already finished.
-2. **A LAN resolver override hid the truth.** The router answers
-   `lore.dushyant.com → 10.20.10.52`, so a browser or `curl` on the LAN talks to
-   Caddy directly and reports success while the public path is broken. Every claim
-   about a public hostname has to force the edge:
-   `curl --resolve lore.dushyant.com:443:188.114.96.5 …`.
+2. **A workstation hosts entry hid the truth.** `lore.dushyant.com` and
+   `auth.dushyant.com` were mapped to `10.20.10.52` in this machine's hosts file
+   (written by `deploy/setup-lore-edge.ps1` when the console was LAN-only), so the
+   browser talked to Caddy directly, got the internal certificate and refused it —
+   while the deployment itself was fine. Every claim about a public hostname has to
+   force the edge: `curl --resolve lore.dushyant.com:443:188.114.96.5 …`. The
+   router was blamed for this during the cutover; a later check showed it answering
+   Cloudflare's addresses.
 3. **`Origin Server Name` is mandatory.** Caddy selects the site by SNI and its
    internal CA holds a per-hostname certificate; without it the connector logs
    `Unable to reach the origin service … tls: internal error` and Cloudflare
@@ -562,12 +565,30 @@ doctor                29 passed, 0 warnings, 0 failed
    same dialog duplicated the previous subdomain — `lore` ended up with *no* route
    and answered 404 while `auth` appeared twice.
 
-### One open nuance
+### The LAN bypass, corrected (2026-11-08)
 
-The router's local override is still in place, so LAN clients bypass the tunnel
-entirely and see Caddy's internal certificate. Convenient, but it means "works on
-my laptop" and "works on the internet" are two different paths until the override
-is removed or pointed somewhere deliberate.
+The bypass was never the router — it answers the public Cloudflare addresses. It
+was this workstation's **hosts file**, written by `deploy/setup-lore-edge.ps1`
+when the console was LAN-only:
+
+```
+10.20.10.52  lore.dushyant.com
+10.20.10.52  auth.dushyant.com
+```
+
+Those two lines sent the browser to Caddy directly, which presents the
+internal-CA certificate; Firefox refuses it with `SSL_ERROR_INTERNAL_ERROR_ALERT`
+and a "Not Secure" badge while the deployment is healthy. The entries have been
+removed, DNS now resolves through Cloudflare, and the script's default mode removes
+them (with `-LanDirect` to restore the old behaviour deliberately, CA trust
+included). Any future "fails in the browser, works with curl" report starts with:
+
+```powershell
+Select-String dushyant C:\Windows\System32\drivers\etc\hosts
+```
+
+For LAN-direct work without touching the hosts file, keep using
+`curl --resolve`, or add `lore.lan.dushyant.com` as a separate name.
 
 ---
 

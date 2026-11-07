@@ -24,6 +24,8 @@ export interface NewLlmKey {
 /** A decrypted key plus its live provider config for the request path. */
 export interface RevealedKey {
   apiKey: string;
+  /** The provider label as configured (`ollama`, `strata`, `openai`, …). */
+  provider: string;
   apiType: string;
   baseUrl: string;
   chatModel: string;
@@ -115,6 +117,7 @@ export async function revealLlmKey(db: Db, orgId: string, id: string): Promise<R
   const rows = await db
     .select({
       cipher: orgLlmKeys.cipher,
+      provider: orgLlmKeys.provider,
       apiType: orgLlmKeys.apiType,
       baseUrl: orgLlmKeys.baseUrl,
       chatModel: orgLlmKeys.chatModel,
@@ -129,6 +132,7 @@ export async function revealLlmKey(db: Db, orgId: string, id: string): Promise<R
   if (!row) return null;
   return {
     apiKey: decryptSecret(row.cipher),
+    provider: row.provider,
     apiType: row.apiType,
     baseUrl: row.baseUrl,
     chatModel: row.chatModel,
@@ -150,6 +154,7 @@ export async function revealActiveLlmKeys(db: Db, orgId: string): Promise<Reveal
   const rows = await db
     .select({
       cipher: orgLlmKeys.cipher,
+      provider: orgLlmKeys.provider,
       apiType: orgLlmKeys.apiType,
       baseUrl: orgLlmKeys.baseUrl,
       chatModel: orgLlmKeys.chatModel,
@@ -164,6 +169,7 @@ export async function revealActiveLlmKeys(db: Db, orgId: string): Promise<Reveal
     .orderBy(desc(orgLlmKeys.createdAt), desc(orgLlmKeys.id));
   return rows.map((row) => ({
     apiKey: decryptSecret(row.cipher),
+    provider: row.provider,
     apiType: row.apiType,
     baseUrl: row.baseUrl,
     chatModel: row.chatModel,

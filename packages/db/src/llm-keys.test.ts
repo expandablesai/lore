@@ -6,6 +6,7 @@ import { orderEmbedKeys, pickChatKey, pickEmbedKey, pickVisionKey, type Revealed
 function key(overrides: Partial<RevealedKey> & { label: string }): RevealedKey & { label: string } {
   return {
     apiKey: "k",
+    provider: "openai",
     apiType: "openai",
     baseUrl: "https://example.test/v1",
     chatModel: "chat-model",

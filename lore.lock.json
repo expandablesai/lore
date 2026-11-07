@@ -1,7 +1,7 @@
 {
   "version": 1,
   "lockedAt": "2026-10-31T16:50:24.597Z",
-  "updatedAt": "2026-11-01T00:42:13.189Z",
+  "updatedAt": "2026-11-07T18:03:16.680Z",
   "reason": "owner request: freeze the current design system and feature surface as of 2026-11-01",
   "changelog": [
     {
@@ -49,6 +49,13 @@
       "reason": "owner approved a read-only retrieval inspector: GET /recall/context, so the M4 benchmark measures the real selection instead of a copy of it",
       "changed": [
         "route+ GET /recall/context  <- apps/api/src/routes/memory.ts"
+      ]
+    },
+    {
+      "at": "2026-11-07T18:03:16.680Z",
+      "reason": "owner asked each chat answer to name its model and whether it runs locally or in the cloud: answer-model badge, chat_messages.model/provider/local (migration 0012)",
+      "changed": [
+        "migration+ 0012_swift_photon.sql"
       ]
     }
   ],
@@ -137,6 +144,7 @@
     "0008_magical_sage.sql": "02a3ace1d10ff0f6",
     "0009_common_lord_tyger.sql": "2e6dca33eb6d53cc",
     "0010_massive_sandman.sql": "7d175ec5202e94f7",
-    "0011_new_salo.sql": "2521b94c12d384c5"
+    "0011_new_salo.sql": "2521b94c12d384c5",
+    "0012_swift_photon.sql": "34ddd4dbf483d83a"
   }
 }

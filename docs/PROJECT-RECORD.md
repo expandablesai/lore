@@ -635,3 +635,42 @@ reference documents — plus an explicit correction of the older status notes it
 
 The memory bank is a searchable summary, not a second source of truth: where it and
 this repository disagree, the repository wins.
+
+---
+
+## 18. Each answer names its model (2026-11-08)
+
+The owner asked that every chat answer show **which model produced it**, and whether
+that model is **local or cloud** — the suspicion being that a wrong or empty answer
+might be coming from somewhere other than the key they thought was in use. The
+suspicion was reasonable: at the time, chat answered from the newest key, which was
+the Mac Strata gateway, and that gateway returned empty text while the app's own
+logs named it.
+
+The badge is derived from the endpoint, not the provider label:
+
+- **`chat_messages`** gained `model`, `provider` and `local` (`0012_swift_photon.sql`,
+  nullable: questions and older turns carry none).
+- **`POST /chat`** records the answering key's `chatModel`, its provider, and
+  `isLocalEndpoint(baseUrl)` — a pure function in `packages/core/src/endpoint.ts`
+  that treats loopback, RFC 1918, CGNAT, link-local and `.local`-style names as
+  local, and anything else (including an unparseable URL) as cloud.
+- **`GET /chats/:id`** returns the three fields with each message, so a reloaded turn
+  shows exactly the badge a live one did.
+- **The console** puts it in the message meta line: `llama3.1 · local`, with the
+  provider (`ollama`) in the tooltip. Questions get no badge — no model produced
+  them.
+
+Why derive it rather than store "local/cloud" as a choice: the same Ollama server is
+local on this VM and would be remote from another deployment, so the label has to
+come from the address the key actually calls, not from a provider name.
+
+Tests: `packages/core/src/endpoint.test.ts` (the address matrix, both directions),
+`apps/api/src/routes/m5.test.ts` (a live turn and the stored history both name the
+model; questions carry none), `apps/web/src/views/Chat.test.tsx` (a stored `local`
+answer and a live `cloud` one render the right label).
+
+The change is recorded in the lock, because it is a feature-surface change: a new
+row `answer-model` in `docs/LOCKED-FEATURES.md`, and a `migration+` changelog entry
+from `node scripts/lock.mjs update`. `pnpm test` is green with the check running
+first, and the design files were not touched — this is a label, not a re-skin.

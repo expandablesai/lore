@@ -49,6 +49,10 @@ export interface StoredChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
   images: ChatImage[];
+  /** The model that answered; absent on questions and on older rows. */
+  model?: string | null;
+  provider?: string | null;
+  local?: boolean | null;
   createdAt: string;
 }
 
@@ -177,6 +181,10 @@ export interface ChatMessage {
   content: string;
   /** ISO timestamp shown beside the message. */
   at?: string;
+  /** Which model produced an answer, and whether it ran locally. */
+  model?: string | null;
+  provider?: string | null;
+  local?: boolean | null;
 }
 
 /** An image the reply rests on; the console fetches its bytes itself. */
@@ -191,7 +199,14 @@ export interface ChatInput {
 }
 
 export interface ChatReply {
-  message: { role: "assistant"; content: string; at?: string };
+  message: {
+    role: "assistant";
+    content: string;
+    at?: string;
+    model?: string | null;
+    provider?: string | null;
+    local?: boolean | null;
+  };
   /** When the question was stored, so the live turn matches a reloaded one. */
   userAt?: string;
   images?: ChatImage[];

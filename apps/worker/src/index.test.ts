@@ -7,6 +7,7 @@ import { orphanedExtractions, planEmbedding } from "./index.ts";
 function key(over: Partial<RevealedKey>): RevealedKey {
   return {
     apiKey: "sk-test",
+    provider: "openai",
     apiType: "openai",
     baseUrl: "https://api.openai.com/v1",
     chatModel: "gpt-4o",

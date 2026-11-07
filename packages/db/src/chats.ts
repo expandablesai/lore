@@ -29,6 +29,11 @@ export interface ChatMessageRow {
   role: string;
   content: string;
   images: ChatImageRef[];
+  /** The model that answered this turn; null on questions and on old rows. */
+  model: string | null;
+  provider: string | null;
+  /** Whether that model ran on this machine's network rather than a cloud API. */
+  local: boolean | null;
   createdAt: Date;
 }
 
@@ -134,6 +139,9 @@ export async function listMessages(
       role: chatMessages.role,
       content: chatMessages.content,
       images: chatMessages.images,
+      model: chatMessages.model,
+      provider: chatMessages.provider,
+      local: chatMessages.local,
       createdAt: chatMessages.createdAt,
     })
     .from(chatMessages)
@@ -153,6 +161,10 @@ export async function appendMessage(
     role: "user" | "assistant" | "system";
     content: string;
     images?: ChatImageRef[];
+    /** Who answered: recorded on the row so history can name the model too. */
+    model?: string;
+    provider?: string;
+    local?: boolean;
   },
 ): Promise<{ createdAt: Date } | null> {
   // The timestamp comes back so a live turn can be labelled exactly like a
@@ -165,6 +177,9 @@ export async function appendMessage(
       role: input.role,
       content: input.content,
       images: input.images ?? [],
+      model: input.model ?? null,
+      provider: input.provider ?? null,
+      local: input.local ?? null,
     })
     .returning({ createdAt: chatMessages.createdAt });
   await db.update(chats).set({ updatedAt: new Date() }).where(eq(chats.id, input.chatId));

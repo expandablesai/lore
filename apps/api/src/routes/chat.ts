@@ -18,7 +18,7 @@ import {
 } from "@lore/db";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { createAnthropicAdapter, createOpenAIAdapter } from "@lore/proxy";
-import { LOCALE_NAMES, isLocale, resolveLocale } from "@lore/core";
+import { LOCALE_NAMES, isLocale, isLocalEndpoint, resolveLocale } from "@lore/core";
 import { loadSelfFacts, selectContext, USER_SUBJECT } from "../retrieval.js";
 
 /**
@@ -236,6 +236,10 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
             .code(502)
             .send({ error: "no active LLM key for this org" });
         }
+
+        // Decided from the key's endpoint, once: the live reply and the stored
+        // row must agree, or a reloaded conversation would relabel the answer.
+        const answerLocal = isLocalEndpoint(chatKey.baseUrl);
 
         // Memory is not a property of one thread: capture what this message
         // states about the reader, then load every fact they have ever stated
@@ -461,7 +465,16 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
           (images.length > 0
             ? "No text came back with these images."
             : `"${chatKey.chatModel}" returned no answer for that question. Try again, or switch the chat key in LLM Keys.`);
-        const message = { role: "assistant" as const, content };
+        // Which model answered, and whether it ran locally, travels with the
+        // turn: the console puts it beside the timestamp, and the stored row
+        // carries it so history says the same thing.
+        const message = {
+          role: "assistant" as const,
+          content,
+          model: chatKey.chatModel,
+          provider: chatKey.provider,
+          local: answerLocal,
+        };
 
         // Record the turn only once it is complete: a question whose answer
         // never arrived is not history worth reloading.
@@ -477,6 +490,9 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
           role: "assistant",
           content: message.content,
           images,
+          model: message.model,
+          provider: message.provider,
+          local: message.local,
         });
 
         return {

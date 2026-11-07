@@ -101,6 +101,18 @@ function MessageMeta({ turn, align }: { turn: Turn; align: "start" | "end" }) {
       )}
     >
       {when !== "" && <span className="select-none">{when}</span>}
+      {turn.role === "assistant" && turn.model && (
+        // Which model answered, and whether it runs on this network or in the
+        // cloud. The provider label is in the tooltip: it is diagnostic detail,
+        // not something to read on every line.
+        <span
+          title={turn.provider ? `${turn.provider} · ${turn.model}` : turn.model}
+          className="select-none rounded-full border border-slate-700/60 bg-slate-800/40 px-2 py-0.5 text-[10px] font-medium tracking-wide text-slate-400"
+        >
+          {turn.model}
+          {typeof turn.local === "boolean" ? ` · ${turn.local ? "local" : "cloud"}` : ""}
+        </span>
+      )}
       <button
         type="button"
         onClick={() => void copy()}
@@ -151,7 +163,15 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
       .then((res) => {
         if (!active) return;
         setTurns(
-          res.messages.map((m) => ({ role: m.role, content: m.content, images: m.images, at: m.createdAt })),
+          res.messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+            images: m.images,
+            at: m.createdAt,
+            model: m.model,
+            provider: m.provider,
+            local: m.local,
+          })),
         );
       })
       .catch((e: unknown) => {
@@ -194,6 +214,9 @@ export function Chat({ token, user, chatId, navigate }: ViewProps & { chatId?: s
             content: res.message.content,
             images: res.images ?? [],
             at: res.message.at,
+            model: res.message.model,
+            provider: res.message.provider,
+            local: res.message.local,
           },
         ];
       });

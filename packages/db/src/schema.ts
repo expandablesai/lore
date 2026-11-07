@@ -122,6 +122,12 @@ export const chatMessages = pgTable("chat_messages", {
   role: text("role").notNull(),
   content: text("content").notNull(),
   images: jsonb("images").notNull().default([]),
+  // Which model produced this turn, and whether it ran locally. Kept on the row
+  // so a reloaded conversation reports the same answer model a live one does;
+  // null on questions, and on turns stored before these columns existed.
+  model: text("model"),
+  provider: text("provider"),
+  local: boolean("local"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [check("chat_role_enum", sql`${t.role} IN ('user','assistant','system')`)]);
 

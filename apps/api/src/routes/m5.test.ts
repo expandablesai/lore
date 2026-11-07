@@ -63,8 +63,16 @@ describe("M5 chat history", () => {
       payload: { messages: [{ role: "user", content: "what is the launch code" }] },
     });
     expect(r.statusCode).toBe(200);
-    const body = r.json() as { chatId: string; message: { content: string } };
+    const body = r.json() as {
+      chatId: string;
+      message: { content: string; model?: string; provider?: string; local?: boolean };
+    };
     expect(body.message.content).toContain("42-Alpha");
+    // The turn names the model that answered and where it runs. The key here is
+    // an https endpoint, so this is a cloud answer.
+    expect(body.message.model).toBe("claude-3-5-sonnet-latest");
+    expect(body.message.provider).toBe("claude");
+    expect(body.message.local).toBe(false);
     expect(body.chatId).toBeTruthy();
     chatId = body.chatId;
 
@@ -77,9 +85,19 @@ describe("M5 chat history", () => {
     const opened = await app.inject({
       method: "GET", url: `/chats/${chatId}`, headers: { authorization: `Bearer ${token}` },
     });
-    const messages = (opened.json() as { messages: Array<{ role: string; content: string }> }).messages;
+    const messages = (
+      opened.json() as {
+        messages: Array<{ role: string; content: string; model?: string; provider?: string; local?: boolean }>;
+      }
+    ).messages;
     expect(messages.map((m) => m.role)).toEqual(["user", "assistant"]);
     expect(messages[1]?.content).toContain("42-Alpha");
+    // History says the same thing the live turn said: same model, same locality.
+    expect(messages[1]?.model).toBe("claude-3-5-sonnet-latest");
+    expect(messages[1]?.provider).toBe("claude");
+    expect(messages[1]?.local).toBe(false);
+    // Questions are not answers: they carry no model.
+    expect(messages[0]?.model ?? null).toBeNull();
   });
 
   test("continuing a conversation appends instead of starting another", async () => {

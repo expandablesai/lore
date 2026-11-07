@@ -29,7 +29,9 @@ afterEach(() => {
 });
 
 function reply(content = "Chen Lian is Li Wei's mother.") {
-  return jsonResponse(200, { message: { role: "assistant", content } });
+  return jsonResponse(200, {
+    message: { role: "assistant", content, model: "llama3.1", provider: "ollama", local: true },
+  });
 }
 
 describe("Chat", () => {
@@ -271,6 +273,9 @@ describe("Chat message metadata", () => {
             role: "assistant",
             content: "Chen Lian is Li Wei's mother.",
             images: [],
+            model: "llama3.1",
+            provider: "ollama",
+            local: true,
             createdAt: "2026-10-15T20:23:00.000Z",
           },
         ],
@@ -291,5 +296,24 @@ describe("Chat message metadata", () => {
     await userEvent.click(copyButtons[1]!);
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("Chen Lian is Li Wei's mother."));
     expect(await screen.findByText("Copied")).toBeInTheDocument();
+
+    // The answer names the model that produced it and where it ran; the
+    // question does not, because no model produced it.
+    const chip = await screen.findByTitle("ollama · llama3.1");
+    expect(chip.textContent).toBe("llama3.1 · local");
+  });
+
+  it("says cloud when the model is not on this network", async () => {
+    installFetchMock({
+      "/api/chat": jsonResponse(200, {
+        message: { role: "assistant", content: "Hello.", model: "gpt-4o", provider: "openai", local: false },
+      }),
+    });
+    render(<Chat token="t" user={user} navigate={vi.fn()} />);
+
+    await userEvent.type(screen.getByLabelText("Message"), "hello{Enter}");
+
+    const chip = await screen.findByTitle("openai · gpt-4o");
+    expect(chip.textContent).toBe("gpt-4o · cloud");
   });
 });

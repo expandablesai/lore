@@ -82,6 +82,7 @@ export function scoreRetrieval(
 }
 
 export { type ChunkSpec, estimateTokens, DEFAULT_CHUNK_TOKENS, chunkText, chunkPages, chunkRows } from "./chunking.js";
+export { isLocalEndpoint } from "./endpoint.js";
 export { EMBEDDING_DIM, HASH_MODEL, HASH_DIM, deterministicEmbed, zeroPad, vectorToPgText } from "./embedding.js";
 export {
   LOCALES,

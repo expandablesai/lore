@@ -147,6 +147,42 @@ Caddy has assets, the page is cached; hard-reload. If it has none,
 per document retention) and the docker volumes. Prune old backups deliberately
 rather than deleting the newest.
 
+## The Ollama host service (port 11434)
+
+LORE's local models are served by an **Ollama systemd service on the VM host**, not by
+the Compose stack: `/usr/local/bin/ollama`, listening on `0.0.0.0:11434`, models in
+`/usr/share/ollama/.ollama/models` (`llama3.1` and `nomic-embed-text`).
+
+It stays bound to all interfaces because the containers reach it at the host's LAN
+address — but it must not be an open inference endpoint for the LAN.
+`ollama-guard.service` (`/usr/local/sbin/ollama-guard.sh`) owns that boundary; its
+chain is first in `INPUT`:
+
+```
+tcp/11434 from 127.0.0.1/32    ACCEPT
+tcp/11434 from 172.18.0.0/16   ACCEPT   # lore_default — app/worker bridge
+tcp/11434                      REJECT --reject-with tcp-reset
+```
+
+Consequences worth knowing:
+
+- **On the host, use `http://127.0.0.1:11434`**, not the LAN address — the host's own
+  `10.20.10.52` source is rejected by design.
+- Containers keep using `http://10.20.10.52:11434/v1`; their source is `172.18.0.x`,
+  as `conntrack` shows.
+- The unit is `After=pve-firewall.service`, and `PartOf=` /
+  `ReloadPropagatedFrom=` it, so a Proxmox firewall reload re-applies the rules.
+  `systemctl restart ollama-guard` is the manual equivalent.
+- If the Compose network is ever recreated on a different subnet, change the constant
+  in the script and restart the unit.
+
+```bash
+iptables -S OLLAMA_GUARD
+curl -s http://127.0.0.1:11434/api/version        # 200
+curl -s http://10.20.10.52:11434/api/version      # refused, even from the host
+```
+
+
 ## What the doctor deliberately does not do
 
 - It does not fix anything. A doctor that edits production cannot be trusted to

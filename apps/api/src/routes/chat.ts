@@ -389,8 +389,15 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
           chatKey.apiType === "anthropic"
             ? createAnthropicAdapter({ apiKey: chatKey.apiKey, baseUrl: chatKey.baseUrl })
             : createOpenAIAdapter({ apiKey: chatKey.apiKey, baseUrl: chatKey.baseUrl });
+        // A thinking model spends part of this budget on reasoning_content before
+        // it writes any content. The adapter's 1024 default is enough for a chat
+        // reply but not for a reasoning pass over retrieved documents: the model
+        // then finishes with `length` and an empty `content`, which reads exactly
+        // like a model that ignored the question. Measured on qwen3.8 via the Mac
+        // gateway: 1024 → empty, 4096 → a normal grounded answer.
         const res = await adapter.chatCompletions({
           model: chatKey.chatModel,
+          max_tokens: 4096,
           messages: [
             {
               role: "system",
@@ -441,7 +448,7 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
             const shortMemory = memory.slice(0, 1500);
             const retry = await adapter.chatCompletions({
               model: chatKey.chatModel,
-              max_tokens: 512,
+              max_tokens: 1024,
               messages: [
                 {
                   role: "system",

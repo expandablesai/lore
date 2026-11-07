@@ -52,7 +52,7 @@ what must stay true; "Proof" is the test that fails if it stops being true.
 | `memory-across-chats` | What the reader says in one conversation — their name, where they live, what they prefer — is a durable fact available in the next conversation | `apps/api/src/routes/m10.test.ts` |
 | `message-metadata` | Every message carries when it was said, and one click copies it | `apps/web/src/lib/time.test.ts` |
 | `answer-model` | Every answer names the model that produced it and says whether that model ran locally or in the cloud — on the live turn and after a reload, because the answer is stored with the message | `apps/web/src/views/Chat.test.tsx`, `apps/api/src/routes/m5.test.ts` |
-| `whole-document-answers` | A question about a document as a whole ("summarise this", "everything about it", "the full file") is answered from that document's chunks in reading order, up to a token budget that fits the smallest model context in use — not from two passages | `apps/api/src/retrieval.test.ts` |
+| `whole-document-answers` | A question about a document as a whole ("summarise this", "everything about it", "the full file") is answered from that document's chunks in reading order, up to a generous token budget sized for the 256K-class gateways in use — not from two passages | `apps/api/src/retrieval.test.ts` |
 
 ## Model access
 

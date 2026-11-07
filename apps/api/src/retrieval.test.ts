@@ -41,7 +41,7 @@ describe("fitToTokenBudget", () => {
     expect(fitToTokenBudget([], 100)).toEqual([]);
   });
 
-  it("is sized for the smallest context in use, not the largest", () => {
-    expect(DOCUMENT_TOKEN_BUDGET).toBe(3000);
+  it("is sized for the 256K-class gateways in use, not a small local window", () => {
+    expect(DOCUMENT_TOKEN_BUDGET).toBe(24000);
   });
 });

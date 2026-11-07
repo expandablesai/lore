@@ -63,12 +63,15 @@ export const WANTS_WHOLE_DOCUMENT =
 /**
  * How much of that one document may travel.
  *
- * Sized for the smallest context in use rather than the largest: the VM's Ollama
- * serves llama3.1 with a 4096-token window, and the system prompt, facts and
- * question need room too. A bigger budget would silently truncate on that key,
- * which is worse than sending less on purpose.
+ * The gateways in use serve 256K contexts (qwen on the Mac, strata on Windows),
+ * so a document is no longer cut to fit a small window: the budget is generous
+ * enough for a long report and the prompt around it. It is still a budget rather
+ * than "everything": a 200-page PDF must not turn one question into a
+ * million-token request. Keys with a genuinely small context (a local Ollama
+ * model configured with 4096) will be truncated by their own server — that is the
+ * provider's setting, not something this constant can guess per key.
  */
-export const DOCUMENT_TOKEN_BUDGET = 3000;
+export const DOCUMENT_TOKEN_BUDGET = 24000;
 
 /** The subject every self-stated fact is stored under. */
 export const USER_SUBJECT = "the user";

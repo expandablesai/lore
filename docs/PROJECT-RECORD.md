@@ -674,3 +674,46 @@ The change is recorded in the lock, because it is a feature-surface change: a ne
 row `answer-model` in `docs/LOCKED-FEATURES.md`, and a `migration+` changelog entry
 from `node scripts/lock.mjs update`. `pnpm test` is green with the check running
 first, and the design files were not touched — this is a label, not a re-skin.
+
+---
+
+## 19. Whole-document questions, and a retry that keeps its evidence (2026-11-08)
+
+The complaint was blunt and fair: *"you have full document and you only give me a
+paragraph?"* Measured with the inspector, the document was
+`AI_Studio_EXPOFLIX_Research_2026-11-07.md` — **18 chunks, 7,394 tokens** — and for
+"tell me everything you know about EXPOFLIX" the model received **two of its
+chunks** (~800 tokens). The other four slots went to unrelated documents, because
+`PASSAGES_PER_DOCUMENT = 2` exists to keep evidence diverse.
+
+A second fault compounded it. When the answering gateway returned an empty reply to
+the longer grounded prompt, `/chat` retried **with the retrieved passages dropped**.
+The retry then answered from the model's own knowledge — which a reader cannot tell
+apart from memory that never worked. That is the paragraph.
+
+Both are fixed:
+
+- **Whole-document mode.** A question about a document as a whole
+  (`WANTS_WHOLE_DOCUMENT`: "everything", "summarise", "the full file", "overview",
+  …) is answered from the top-ranked document's chunks **in reading order**, up to
+  `DOCUMENT_TOKEN_BUDGET = 24000`. The budget is sized for the gateways actually in
+  use — qwen on the Mac and strata on Windows, both 256K contexts — not for a 4K
+  local window. Ordinary questions keep the measured cap, so the benchmark numbers
+  do not move.
+- **The inspector no longer opts itself out.** `GET /recall/context` always passed a
+  `limits` object, and expansion was deliberately skipped when overrides were
+  present. With no parameters supplied it now passes nothing, so the endpoint shows
+  exactly what `/chat` does; explicit `limit`/`perDocument`/`candidates` still take
+  the plain path, which is what the sweep needs.
+- **A retry keeps its grounding.** The empty-answer retry carries a clipped
+  1,500-character slice of the same passages instead of dropping them. A shorter
+  prompt is a legitimate second try; an ungrounded one is a lie about the workspace.
+
+Tests: `apps/api/src/retrieval.test.ts` (the trigger in both directions, the budget
+accumulator, and the budget's size), and the full suite — api 111, total 295, lock
+intact. Verified live: a whole-document question now selects the document's chunks
+in reading order rather than two of them plus three unrelated files.
+
+One caveat kept honest: a provider with a genuinely small window (the VM's Ollama is
+started with `num_ctx 4096`) will truncate this prompt. The budget is not a promise
+about any particular key's context; it is a ceiling for the ones configured here.

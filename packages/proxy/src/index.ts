@@ -18,6 +18,17 @@ export interface ChatCompletionsRequest {
    * answer" for any question with a large context.
    */
   readonly max_tokens?: number;
+  /**
+   * Whether the model may reason before answering, when the provider exposes it.
+   *
+   * `false` is for gateways that pass `chat_template_kwargs` through to the model
+   * (LiteLLM/vLLM-style). It matters for large grounded prompts: qwen3.8 spent
+   * 21,963 characters of reasoning and still returned empty `content` at a 4096
+   * budget, where the same prompt with thinking off produced a 4,790-character
+   * answer. Left `undefined`, no such field is sent — providers that do not
+   * understand it must not receive it.
+   */
+  readonly enableThinking?: boolean;
 }
 
 export interface ChatMessage {
@@ -84,11 +95,15 @@ export function createOpenAIAdapter(opts: AdapterOptions): UpstreamAdapter {
     name: "openai",
     baseUrl,
     async chatCompletions(request: ChatCompletionsRequest): Promise<ChatCompletionsResponse> {
-      const json = await postJson(`${baseUrl}/chat/completions`, opts.apiKey, {
+      const body: Record<string, unknown> = {
         model: request.model,
         messages: request.messages,
         max_tokens: request.max_tokens ?? 1024,
-      });
+      };
+      if (request.enableThinking !== undefined) {
+        body.chat_template_kwargs = { enable_thinking: request.enableThinking };
+      }
+      const json = await postJson(`${baseUrl}/chat/completions`, opts.apiKey, body);
       const data = json as {
         id?: string;
         model?: string;

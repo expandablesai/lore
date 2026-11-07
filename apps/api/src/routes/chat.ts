@@ -241,6 +241,15 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
         // row must agree, or a reloaded conversation would relabel the answer.
         const answerLocal = isLocalEndpoint(chatKey.baseUrl);
 
+        // Reasoning models can spend the whole budget on reasoning_content and
+        // never write content when the prompt carries retrieved documents:
+        // measured on qwen3.8 through the strata gateway, 21,963 characters of
+        // reasoning, `content` empty, finish reason "length", at a 4096 budget.
+        // That gateway passes chat_template_kwargs through, so thinking is turned
+        // off there; other providers never receive the field.
+        const enableThinking =
+          chatKey.provider === "strata" || /qwen/i.test(chatKey.chatModel) ? false : undefined;
+
         // Memory is not a property of one thread: capture what this message
         // states about the reader, then load every fact they have ever stated
         // plus the earlier turns that look related to this question.
@@ -398,6 +407,7 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
         const res = await adapter.chatCompletions({
           model: chatKey.chatModel,
           max_tokens: 4096,
+          enableThinking,
           messages: [
             {
               role: "system",
@@ -449,6 +459,7 @@ export const createChatRoutes: (db: Db) => FastifyPluginAsyncZod =
             const retry = await adapter.chatCompletions({
               model: chatKey.chatModel,
               max_tokens: 1024,
+              enableThinking,
               messages: [
                 {
                   role: "system",

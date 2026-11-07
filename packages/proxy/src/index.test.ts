@@ -58,6 +58,34 @@ describe("openai adapter", () => {
     expect(payload.max_tokens).toBe(64);
   });
 
+  it("sends enable_thinking only when asked", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      new Response(JSON.stringify({ id: "c3", model: "m", choices: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const adapter = createOpenAIAdapter({ apiKey: "sk-test" });
+
+    await adapter.chatCompletions({
+      model: "m",
+      messages: [{ role: "user", content: "x" }],
+      enableThinking: false,
+    });
+    const off = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      chat_template_kwargs?: { enable_thinking?: boolean };
+    };
+    expect(off.chat_template_kwargs?.enable_thinking).toBe(false);
+
+    // A provider that does not understand the field must never receive it.
+    await adapter.chatCompletions({ model: "m", messages: [{ role: "user", content: "x" }] });
+    const plain = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)) as {
+      chat_template_kwargs?: unknown;
+    };
+    expect(plain.chat_template_kwargs).toBeUndefined();
+  });
+
   it("throws with the upstream status on a non-2xx response", async () => {
     vi.stubGlobal(
       "fetch",

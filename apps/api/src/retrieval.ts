@@ -48,6 +48,28 @@ export const PASSAGE_LIMIT = 6;
 /** And how many of them may come from one document. */
 export const PASSAGES_PER_DOCUMENT = 2;
 
+/**
+ * Whether the question is about a document as a whole rather than a point in it.
+ *
+ * "Tell me everything about X", "summarise the file", "what is this document" —
+ * for these the diversity cap is actively wrong: two passages out of eighteen
+ * cannot describe the eighteen, and the other four slots are then filled with
+ * unrelated documents. Detected from the words people use to ask for the whole
+ * thing, so the behaviour is explainable rather than a hidden heuristic.
+ */
+export const WANTS_WHOLE_DOCUMENT =
+  /\b(everything|all about|full|entire|whole|complete|summar(?:y|ise|ize|ised|ized)|overview|the document|this document|the file|this file|the upload|the report)\b/i;
+
+/**
+ * How much of that one document may travel.
+ *
+ * Sized for the smallest context in use rather than the largest: the VM's Ollama
+ * serves llama3.1 with a 4096-token window, and the system prompt, facts and
+ * question need room too. A bigger budget would silently truncate on that key,
+ * which is worse than sending less on purpose.
+ */
+export const DOCUMENT_TOKEN_BUDGET = 3000;
+
 /** The subject every self-stated fact is stored under. */
 export const USER_SUBJECT = "the user";
 
@@ -232,6 +254,78 @@ export interface ContextLimits {
   perDocument?: number;
 }
 
+/**
+ * The first rows that fit a token budget, in the order given.
+ *
+ * Always returns at least one row when there is one: a single passage larger than
+ * the whole budget is still better than answering from nothing.
+ */
+export function fitToTokenBudget<T extends { tokens: number }>(
+  rows: T[],
+  budget = DOCUMENT_TOKEN_BUDGET,
+): T[] {
+  const fitted: T[] = [];
+  let used = 0;
+  for (const row of rows) {
+    if (fitted.length > 0 && used + row.tokens > budget) break;
+    fitted.push(row);
+    used += row.tokens;
+  }
+  return fitted;
+}
+
+/**
+ * The top-ranked document, in reading order, up to the budget.
+ *
+ * Only for whole-document questions; null otherwise, so the ordinary path keeps
+ * its measured behaviour. Reading order (rather than relevance order) is what
+ * makes a summary of that document possible: the model sees its beginning and its
+ * structure, not six similar paragraphs.
+ */
+export async function expandWholeDocument(
+  db: Db,
+  input: {
+    orgId: string;
+    userId: string;
+    question: string;
+    candidates: Candidate[];
+    model: string;
+    queryText: string;
+  },
+): Promise<Candidate[] | null> {
+  if (!WANTS_WHOLE_DOCUMENT.test(input.question)) return null;
+  const top = input.candidates[0];
+  if (!top) return null;
+
+  const rows = await withRls(db, input.orgId, input.userId, async (tx) =>
+    tx
+      .select({
+        text: chunks.text,
+        documentId: chunks.documentId,
+        filename: documents.filename,
+        mime: documents.mime,
+        tokens: chunks.tokens,
+        distance: sql<number>`${embeddings.vec} <=> ${input.queryText}::vector`,
+      })
+      .from(chunks)
+      .innerJoin(
+        embeddings,
+        and(eq(embeddings.entityId, chunks.id), eq(embeddings.entityType, "chunk")),
+      )
+      .innerJoin(documents, eq(documents.id, chunks.documentId))
+      .where(
+        and(
+          eq(chunks.documentId, top.documentId),
+          eq(chunks.orgId, input.orgId),
+          eq(embeddings.model, input.model),
+        ),
+      )
+      .orderBy(chunks.seq),
+  );
+
+  return fitToTokenBudget(rows).map(({ tokens: _tokens, ...rest }) => rest);
+}
+
 /** Everything `/chat` needs from retrieval, and everything the inspector shows. */
 export async function selectContext(
   db: Db,
@@ -257,11 +351,43 @@ export async function selectContext(
     askedForImage,
     limit: input.limits?.candidates ?? CANDIDATE_LIMIT,
   });
-  const { selected, dropped } = applyPassageCap(
-    candidates,
-    input.limits?.limit ?? PASSAGE_LIMIT,
-    input.limits?.perDocument ?? PASSAGES_PER_DOCUMENT,
-  );
+
+  // A whole-document question is answered from that document's own chunks in
+  // reading order, up to a token budget. The diversity cap is skipped on purpose:
+  // two passages out of eighteen cannot describe the eighteen. Measuring callers
+  // (the inspector's overrides) keep the plain path, so the benchmark is
+  // unaffected.
+  const expanded = input.limits
+    ? null
+    : await expandWholeDocument(db, {
+        orgId: input.orgId,
+        userId: input.userId,
+        question: input.question,
+        candidates,
+        model,
+        queryText,
+      });
+
+  let selected: Candidate[];
+  let dropped: DroppedPassage[];
+  if (expanded) {
+    selected = expanded;
+    const used = new Set(expanded.map((row) => `${row.documentId}:${row.text}`));
+    dropped = candidates
+      .filter((row) => !used.has(`${row.documentId}:${row.text}`))
+      .map((row) => ({
+        documentId: row.documentId,
+        filename: row.filename,
+        reason: "the whole-document question was answered from one document",
+      }));
+  } else {
+    ({ selected, dropped } = applyPassageCap(
+      candidates,
+      input.limits?.limit ?? PASSAGE_LIMIT,
+      input.limits?.perDocument ?? PASSAGES_PER_DOCUMENT,
+    ));
+  }
+
   const facts = await loadSelfFacts(db, input.orgId, input.userId);
 
   return { model, queryText, askedForImage, candidates, selected, dropped, facts };

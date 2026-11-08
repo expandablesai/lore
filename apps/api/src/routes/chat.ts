@@ -61,6 +61,11 @@ const CAPABILITIES = [
   "You CANNOT: generate or edit images, browse the web, run code or shell commands, read files that are not in this workspace, or send email.",
   "When asked for something you cannot do, say so plainly in one short sentence and name one thing you can do instead.",
   "Never list a capability you were not given here.",
+  // Brevity is the failure readers notice most: a broad question answered in one
+  // flat paragraph reads as a system that did not understand it. This is an
+  // instruction, not a guarantee — how much detail a model can actually produce is
+  // set by its weights — but without it even a capable model defaults to a summary.
+  "Answer the newest question, taking the conversation so far into account. When the question is broad or asks you to explain something, answer thoroughly: use structure, give specifics and examples, and do not repeat an earlier reply word for word.",
 ].join("\n");
 
 /** One image attached to a reply; the console fetches the bytes itself. */
